@@ -1,0 +1,18 @@
+#!/sbin/openrc-run
+
+command="/usr/local/lx-ui/lx-ui"
+command_background=true
+pidfile="/run/lx-ui.pid"
+description="lx-ui Service"
+procname="lx-ui"
+depend() {
+    need net
+}
+start_pre(){
+    cd /usr/local/lx-ui
+}
+reload() {
+  ebegin "Reloading ${RC_SVCNAME}"
+  kill -USR1 $(cat $pidfile)
+  eend $?
+}
