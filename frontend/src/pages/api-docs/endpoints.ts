@@ -3007,6 +3007,35 @@ export const sections: readonly Section[] = [
         summary:
           'Remove the vpngate-out outbound and any routing rule that targets it, then reload Xray.',
       },
+      {
+        method: 'GET',
+        path: '/panel/api/vpngate/takeover',
+        summary:
+          'Which inbounds leave through the VPNGate exit right now: the takeover mode (all, selected, manual), the inbound tags the managed rule covers, the rule position, and every inbound that may be picked. Derived from the Xray template, so it is also what Xray is actually doing.',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/takeover',
+        summary:
+          'Switch the takeover mode. The panel registers the vpngate-out outbound, inserts or rewrites its own routing rule (placed after private/DNS/API rules and before a catch-all, so those keep winning), and hot-applies the result to Xray. Mode manual removes only the managed rule; rules written by hand are never touched.',
+        params: [
+          {
+            name: 'mode',
+            in: 'body (json)',
+            type: 'string',
+            enum: ['all', 'selected', 'manual'],
+            desc: 'all = every inbound, selected = the listed inbound tags, manual = panel adds no rule.',
+          },
+          {
+            name: 'inboundTags',
+            in: 'body (json)',
+            type: 'string[]',
+            desc: 'Xray inbound tags to route through VPNGate. Only used, and only required, for selected.',
+            optional: true,
+          },
+        ],
+        body: '{\n  "mode": "selected",\n  "inboundTags": ["in-443-tcp", "in-8388"]\n}',
+      },
     ],
   },
 

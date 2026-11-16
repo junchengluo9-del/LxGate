@@ -25,6 +25,8 @@ export interface DBInboundRecord extends ProtocolFlags {
   id: number;
   enable: boolean;
   remark: string;
+  /** Xray inbound tag; the unit the VPNGate takeover rule lists. */
+  tag?: string;
   subSortIndex: number;
   port: number;
   protocol: string;

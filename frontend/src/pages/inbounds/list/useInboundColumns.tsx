@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Popover, Switch, Tag, Tooltip, type TableColumnType } from 'antd';
 import { TeamOutlined } from '@ant-design/icons';
 
+import { inboundUsesVpngate, useVpngateTakeoverQuery } from '@/api/queries/useVpngateTakeover';
+
 import { SizeFormatter, IntlUtil, ColorUtils } from '@/utils';
 import { InfinityIcon } from '@/components/ui';
 import { useDatepicker } from '@/hooks/useDatepicker';
@@ -58,6 +60,9 @@ export function useInboundColumns({
 }: UseInboundColumnsParams): TableColumnType<DBInboundRecord>[] {
   const { t } = useTranslation();
   const { datepicker } = useDatepicker();
+  // Which inbounds leave through the VPNGate exit is decided by one panel-managed
+  // rule; the badge reads that rule instead of keeping a second copy per row.
+  const takeover = useVpngateTakeoverQuery().data;
 
   return useMemo(() => {
     const compareText = (a: string | undefined | null, b: string | undefined | null) =>
@@ -282,6 +287,35 @@ export function useInboundColumns({
           return <div className="protocol-tags">{tags}</div>;
         },
       },
+      ...(takeover && takeover.mode !== 'manual'
+        ? [
+            {
+              title: t('pages.inbounds.exitColumn'),
+              key: 'exit',
+              align: 'center' as const,
+              width: 120,
+              sorter: (a: DBInboundRecord, b: DBInboundRecord) =>
+                Number(inboundUsesVpngate(takeover, b.tag)) -
+                Number(inboundUsesVpngate(takeover, a.tag)),
+              render: (_: unknown, record: DBInboundRecord) => {
+                const viaVpngate = inboundUsesVpngate(takeover, record.tag);
+                return (
+                  <Tooltip
+                    title={t(
+                      viaVpngate
+                        ? 'pages.inbounds.exitVpngateHint'
+                        : 'pages.inbounds.exitDirectHint',
+                    )}
+                  >
+                    <Tag color={viaVpngate ? 'geekblue' : 'default'} bordered={false}>
+                      {t(viaVpngate ? 'pages.inbounds.exitVpngate' : 'pages.inbounds.exitDirect')}
+                    </Tag>
+                  </Tooltip>
+                );
+              },
+            },
+          ]
+        : []),
       {
         title: t('clients'),
         key: 'clients',
@@ -482,6 +516,7 @@ export function useInboundColumns({
     expireDiff,
     trafficDiff,
     datepicker,
+    takeover,
     onRowAction,
     onSwitchEnable,
   ]);

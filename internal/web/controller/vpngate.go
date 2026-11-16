@@ -10,6 +10,7 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v3/internal/vpngate"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/service"
+	"github.com/mhsanaei/3x-ui/v3/internal/web/session"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,6 +25,7 @@ type VPNGateController struct {
 	BaseController
 
 	settingService    service.SettingService
+	inboundService    service.InboundService
 	xraySetting       service.XraySettingService
 	xrayService       service.XrayService
 	engineCallTimeout time.Duration
@@ -42,6 +44,7 @@ func (a *VPNGateController) initRouter(g *gin.RouterGroup) {
 	g.GET("/nodes", a.nodes)
 	g.GET("/logs", a.logs)
 	g.GET("/xray-binding", a.getBinding)
+	g.GET("/takeover", a.getTakeover)
 
 	g.POST("/refresh", a.refresh)
 	g.POST("/check", a.check)
@@ -52,6 +55,7 @@ func (a *VPNGateController) initRouter(g *gin.RouterGroup) {
 	g.POST("/test-proxy", a.testProxy)
 	g.POST("/xray-bind", a.bindOutbound)
 	g.POST("/xray-unbind", a.unbindOutbound)
+	g.POST("/takeover", a.setTakeover)
 }
 
 // status reports the supervisor's view of the engine plus, when it is up, the
@@ -282,6 +286,152 @@ func (a *VPNGateController) unbindOutbound(c *gin.Context) {
 	state := a.bindingState()
 	state["changed"] = changed
 	jsonObj(c, state, nil)
+}
+
+type takeoverForm struct {
+	Mode        string   `json:"mode"`
+	InboundTags []string `json:"inboundTags"`
+}
+
+// takeoverPayload is everything the VPNGate page and the inbound form need to
+// render the takeover control in one round-trip: the mode that is live, the
+// inbounds that may be picked, and the technical bits the advanced section shows.
+func (a *VPNGateController) takeoverPayload(c *gin.Context, changed bool) (gin.H, error) {
+	template, err := a.settingService.GetXrayConfigTemplate()
+	if err != nil {
+		return nil, err
+	}
+	state, err := vpngate.ReadTakeover(template)
+	if err != nil {
+		return nil, err
+	}
+	user := session.GetLoginUser(c)
+	inbounds, err := a.inboundService.GetInboundExitOptions(user.Id)
+	if err != nil {
+		return nil, err
+	}
+	stored, err := a.settingService.GetVPngateTakeover()
+	if err != nil {
+		return nil, err
+	}
+
+	// A selected takeover with nothing picked yet leaves no rule behind, so the
+	// template reads as manual; the stored choice is what the operator picked.
+	mode := state.Mode
+	if state.Mode == vpngate.TakeoverModeManual && stored.Mode == vpngate.TakeoverModeSelected {
+		mode = vpngate.TakeoverModeSelected
+	}
+	picked := state.InboundTags
+	if mode != vpngate.TakeoverModeAll && len(picked) == 0 {
+		picked = stored.InboundTags
+	}
+	known := make(map[string]struct{}, len(inbounds))
+	for _, inbound := range inbounds {
+		known[inbound.Tag] = struct{}{}
+	}
+	live := make([]string, 0, len(picked))
+	for _, tag := range vpngate.CleanInboundTags(picked) {
+		if _, ok := known[tag]; ok {
+			live = append(live, tag)
+		}
+	}
+	if mode == vpngate.TakeoverModeAll {
+		live = []string{}
+	}
+
+	supervisor := vpngate.GetSupervisor()
+	return gin.H{
+		"mode":          mode,
+		"inboundTags":   live,
+		"bound":         state.Bound,
+		"ruleTag":       state.RuleTag,
+		"ruleIndex":     state.RuleIndex,
+		"inbounds":      inbounds,
+		"proxyAddress":  supervisor.Config().ProxyAddress(),
+		"openvpnDevice": supervisor.Config().OpenVPNDev,
+		"changed":       changed,
+	}, nil
+}
+
+// getTakeover reports the live takeover mode.
+func (a *VPNGateController) getTakeover(c *gin.Context) {
+	payload, err := a.takeoverPayload(c, false)
+	if err != nil {
+		jsonMsg(c, "failed to read the VPNGate takeover state", err)
+		return
+	}
+	jsonObj(c, payload, nil)
+}
+
+// setTakeover switches between "all inbounds", "only these inbounds" and
+// "manual routing only". The whole point of the endpoint is that the operator
+// never edits Xray JSON: the panel owns one routing rule, keeps the socks
+// outbound registered, and applies the result to the running core.
+func (a *VPNGateController) setTakeover(c *gin.Context) {
+	var form takeoverForm
+	if err := c.ShouldBindJSON(&form); err != nil {
+		jsonMsg(c, "invalid request body", err)
+		return
+	}
+	mode, err := vpngate.NormalizeTakeoverMode(form.Mode)
+	if err != nil {
+		jsonMsg(c, "unsupported takeover mode", err)
+		return
+	}
+	user := session.GetLoginUser(c)
+	inbounds, err := a.inboundService.GetInboundExitOptions(user.Id)
+	if err != nil {
+		jsonMsg(c, "failed to list inbounds", err)
+		return
+	}
+	known := make(map[string]struct{}, len(inbounds))
+	for _, inbound := range inbounds {
+		known[inbound.Tag] = struct{}{}
+	}
+	tags := make([]string, 0, len(form.InboundTags))
+	for _, tag := range vpngate.CleanInboundTags(form.InboundTags) {
+		if _, ok := known[tag]; ok {
+			tags = append(tags, tag)
+		}
+	}
+
+	template, err := a.settingService.GetXrayConfigTemplate()
+	if err != nil {
+		jsonMsg(c, "failed to read the Xray template", err)
+		return
+	}
+	if strings.TrimSpace(template) == "" {
+		jsonMsg(c, "the Xray template is empty", errors.New("nothing to apply the takeover to"))
+		return
+	}
+	spec := vpngate.TakeoverSpec{Mode: mode, InboundTags: tags}
+	updated, changed, err := vpngate.ApplyTakeover(template, vpngate.GetSupervisor().Config(), spec)
+	if err != nil {
+		jsonMsg(c, "failed to apply the VPNGate takeover", err)
+		return
+	}
+	if changed {
+		if err := a.xraySetting.SaveXraySetting(updated); err != nil {
+			jsonMsg(c, "failed to save the Xray template", err)
+			return
+		}
+		if a.xrayService.IsXrayRunning() {
+			if err := a.xrayService.RestartXray(false); err != nil {
+				jsonMsg(c, "takeover saved but Xray did not reload", err)
+				return
+			}
+		}
+	}
+	if err := a.settingService.SetVPngateTakeover(spec); err != nil {
+		jsonMsg(c, "takeover applied but the choice was not stored", err)
+		return
+	}
+	payload, err := a.takeoverPayload(c, changed)
+	if err != nil {
+		jsonMsg(c, "failed to read the VPNGate takeover state", err)
+		return
+	}
+	jsonObj(c, payload, nil)
 }
 
 // forwardGet proxies one engine read and unwraps its JSON into the panel's

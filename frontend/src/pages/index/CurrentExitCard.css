@@ -1,0 +1,182 @@
+/* 「当前出口」 — one Liquid Glass strip on Overview. */
+
+.ov-exit-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: 18px;
+  border: 1px solid var(--lg-border);
+  background:
+    radial-gradient(120% 140% at 100% 0%, var(--lg-accent-soft) 0%, transparent 55%),
+    var(--lg-surface, rgba(255, 255, 255, 0.04));
+  backdrop-filter: blur(18px) saturate(140%);
+  overflow: hidden;
+}
+
+.ov-exit-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--lg-text-dim);
+  opacity: 0.55;
+}
+
+.ov-exit-card.tone-ok::before {
+  background: var(--lg-ok);
+  opacity: 1;
+}
+
+.ov-exit-card.tone-warn::before {
+  background: var(--lg-warn);
+  opacity: 1;
+}
+
+.ov-exit-card.tone-bad::before {
+  background: var(--lg-bad);
+  opacity: 1;
+}
+
+.ov-exit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ov-exit-label {
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lg-text-dim);
+}
+
+.ov-exit-body {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ov-exit-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ov-exit-country {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--lg-text);
+  overflow-wrap: anywhere;
+}
+
+.ov-exit-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--lg-text-dim);
+}
+
+.ov-exit-meta strong {
+  color: var(--lg-text);
+  font-weight: 600;
+}
+
+.ov-exit-dot {
+  opacity: 0.5;
+}
+
+.ov-exit-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ov-exit-switches {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid var(--lg-border);
+}
+
+.ov-exit-modes {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 12px;
+  border: 1px solid var(--lg-border);
+  background: var(--lg-surface-muted, rgba(127, 127, 127, 0.06));
+  gap: 2px;
+}
+
+.ov-exit-mode {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--lg-text-dim);
+  font-size: 0.78rem;
+  font-weight: 550;
+  padding: 5px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+  white-space: nowrap;
+}
+
+.ov-exit-mode:hover:not(:disabled) {
+  color: var(--lg-text);
+}
+
+.ov-exit-mode.is-on {
+  background: var(--lg-accent-soft);
+  color: var(--lg-accent);
+  font-weight: 650;
+}
+
+.ov-exit-mode:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ov-exit-country-select {
+  min-width: 170px;
+}
+
+.ov-exit-error {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--lg-bad);
+}
+
+@media (max-width: 768px) {
+  .ov-exit-card {
+    padding: 14px;
+  }
+
+  .ov-exit-country {
+    font-size: 1.15rem;
+  }
+
+  .ov-exit-switches {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ov-exit-country-select {
+    width: 100%;
+  }
+}

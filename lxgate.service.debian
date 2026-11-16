@@ -59,6 +59,12 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectClock=yes
+# ProtectClock=yes implies DevicePolicy=closed, which denies open("/dev/net/tun")
+# with EPERM -- and the embedded VPNGate engine runs openvpn inside this unit.
+# The device is exactly what an OpenVPN tunnel needs, so allow that one device
+# (rw) rather than the whole /dev tree. Without this line every VPNGate connect
+# fails with "Cannot open TUN/TAP dev /dev/net/tun: Operation not permitted".
+DeviceAllow=/dev/net/tun rw
 ProtectHostname=yes
 # read-only rather than yes: installs keep TLS certs under /root/cert, and the
 # panel must still be able to read them.

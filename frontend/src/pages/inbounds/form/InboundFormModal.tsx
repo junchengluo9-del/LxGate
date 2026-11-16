@@ -20,6 +20,8 @@ import {
 import { Controller, FormProvider, useForm, useWatch } from 'react-hook-form';
 
 import { HttpUtil, NumberFormatter, RandomUtil, SizeFormatter, Wireguard } from '@/utils';
+import { useQueryClient } from '@tanstack/react-query';
+import { inboundUsesVpngate, useVpngateTakeoverQuery } from '@/api/queries/useVpngateTakeover';
 import type { RealityScanResult } from '@/generated/types';
 import {
   rawInboundToFormValues,
@@ -266,6 +268,13 @@ export default function InboundFormModal({
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<RealityScanResult | null>(null);
   const [activeTab, setActiveTab] = useState('basic');
+  const queryClient = useQueryClient();
+  const takeoverQuery = useVpngateTakeoverQuery();
+  const takeoverState = takeoverQuery.data;
+  // Where this inbound's traffic leaves: direct from this host, or through the
+  // VPNGate exit. Kept beside the form (not in it) because it is a routing
+  // decision the panel applies after the inbound itself is saved.
+  const [exitRoute, setExitRoute] = useState<'direct' | 'vpngate'>('direct');
   const {
     fallbacks,
     hasStoredFallbacks,
@@ -505,6 +514,27 @@ export default function InboundFormModal({
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [open, mode, dbInbound, methods]);
 
+  /*
+   * Seed the exit selector once per open, as soon as the current takeover state
+   * is known: an inbound is "VPNGate" when the takeover rule covers it, and a
+   * brand-new inbound inherits the "all inbounds" mode it would be born into.
+   */
+  const [exitSeeded, setExitSeeded] = useState(false);
+  useEffect(() => {
+    if (!open) {
+      setExitSeeded(false);
+      setExitRoute('direct');
+      return;
+    }
+    if (exitSeeded || !takeoverState) return;
+    if (mode === 'edit') {
+      setExitRoute(inboundUsesVpngate(takeoverState, dbInbound?.tag) ? 'vpngate' : 'direct');
+    } else {
+      setExitRoute(takeoverState.mode === 'all' ? 'vpngate' : 'direct');
+    }
+    setExitSeeded(true);
+  }, [open, exitSeeded, takeoverState, mode, dbInbound?.tag]);
+
   useEffect(() => {
     if (!open) return;
     if (wTag === lastWrittenTagRef.current) return;
@@ -602,6 +632,41 @@ export default function InboundFormModal({
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [mode, methods]);
 
+  /*
+   * Applies the 「出口去向」 choice to the panel-managed takeover rule. The inbound
+   * itself is already saved by then: a failure here is reported, never rolled
+   * back, because the inbound is valid either way.
+   */
+  const applyExitRoute = async (tag: string | undefined) => {
+    if (!takeoverState || !tag) return;
+    const current = takeoverState.inboundTags ?? [];
+    let next: { mode: 'selected'; tags: string[] } | null = null;
+    if (exitRoute === 'vpngate') {
+      // "All inbounds" already covers a new one.
+      if (takeoverState.mode === 'all') return;
+      next = { mode: 'selected', tags: Array.from(new Set([...current, tag])) };
+    } else if (takeoverState.mode === 'all') {
+      // Leaving \`all\` for one inbound means the others keep their exit.
+      next = {
+        mode: 'selected',
+        tags: takeoverState.inbounds
+          .map((inbound) => inbound.tag)
+          .filter((value) => value && value !== tag),
+      };
+    } else if (takeoverState.mode === 'selected' && current.includes(tag)) {
+      next = { mode: 'selected', tags: current.filter((value) => value !== tag) };
+    }
+    if (!next) return;
+    const msg = await HttpUtil.post('/panel/api/vpngate/takeover', next, { silent: true });
+    if (!msg?.success) {
+      messageApi.warning(
+        t('pages.inbounds.form.exitApplyFailed', { msg: msg?.msg || t('somethingWentWrong') }),
+      );
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ['vpngate'] });
+  };
+
   const saveValues = async () => {
     // settings.fallbacks has no bound field; shouldUnregister=false keeps it from
     // the reset object. An edit sends no clients: the server keeps the stored ones.
@@ -649,6 +714,11 @@ export default function InboundFormModal({
         : '/panel/api/inbounds/add';
       const msg = await HttpUtil.post(url, payload);
       if (msg?.success) {
+        await applyExitRoute(
+          (msg.obj as { tag?: string } | null)?.tag ||
+            (payload as { tag?: string }).tag ||
+            dbInbound?.tag,
+        );
         if (isFallbackHost) {
           const obj = msg.obj as { id?: number; Id?: number } | null;
           const masterId = existingId ?? obj?.id ?? obj?.Id ?? 0;
@@ -693,6 +763,33 @@ export default function InboundFormModal({
       <FormField name="remark" label={t('pages.inbounds.remark')}>
         <Input />
       </FormField>
+
+      {/*
+        One-stop exit choice: an operator adding an inbound should not have to
+        open the VPNGate page and edit routing afterwards to send this inbound
+        through the tunnel.
+      */}
+      <div className="inbound-exit-field">
+        <span className="inbound-exit-label">{t('pages.inbounds.form.exitRoute')}</span>
+        <Radio.Group
+          value={exitRoute}
+          onChange={(event) => setExitRoute(event.target.value as 'direct' | 'vpngate')}
+          optionType="button"
+          buttonStyle="solid"
+          disabled={!takeoverState}
+          options={[
+            { value: 'direct', label: t('pages.inbounds.form.exitDirect') },
+            { value: 'vpngate', label: t('pages.inbounds.form.exitVpngate') },
+          ]}
+        />
+        <p className="inbound-exit-hint">
+          {takeoverState?.mode === 'all'
+            ? t('pages.inbounds.form.exitAllHint')
+            : takeoverState?.mode === 'manual'
+              ? t('pages.inbounds.form.exitManualHint')
+              : t('pages.inbounds.form.exitHint')}
+        </p>
+      </div>
 
       {selectableNodes.length > 0 && isNodeEligible && (
         <FormField name="nodeId" label={t('pages.inbounds.deployTo')}>

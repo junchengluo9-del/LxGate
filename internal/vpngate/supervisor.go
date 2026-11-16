@@ -52,6 +52,7 @@ type Status struct {
 	ProxyPort     int    `json:"proxyPort"`
 	APIAddress    string `json:"apiAddress"`
 	ProxyAddress  string `json:"proxyAddress"`
+	OpenVPNDev    string `json:"openvpnDev"`
 	SocksURL      string `json:"socksUrl"`
 	HTTPProxyURL  string `json:"httpProxyUrl"`
 	ScriptPath    string `json:"scriptPath"`
@@ -184,6 +185,7 @@ func (s *Supervisor) Status() Status {
 		ProxyPort:    s.cfg.ProxyPort,
 		APIAddress:   s.cfg.Address(),
 		ProxyAddress: s.cfg.ProxyAddress(),
+		OpenVPNDev:   s.cfg.OpenVPNDev,
 		SocksURL:     "socks5://" + s.cfg.ProxyAddress(),
 		HTTPProxyURL: "http://" + s.cfg.ProxyAddress(),
 		ScriptPath:   s.cfg.ScriptPath,
@@ -370,6 +372,7 @@ func (s *Supervisor) childEnv() []string {
 		"UI_PORT=" + strconv.Itoa(s.cfg.APIPort),
 		"LOCAL_PROXY_HOST=127.0.0.1",
 		"LOCAL_PROXY_PORT=" + strconv.Itoa(s.cfg.ProxyPort),
+		"LXGATE_OPENVPN_DEV=" + s.cfg.OpenVPNDev,
 		"VPNGATE_DATA_DIR=" + s.cfg.DataDir,
 		"PYTHONUNBUFFERED=1",
 		// The engine's own git-based self-update is meaningless once embedded;

@@ -29,7 +29,12 @@ import (
 const (
 	DefaultAPIPort    = 18787
 	DefaultProxyPort  = 7928
-	DefaultPythonBin  = "python3"
+	// DefaultPythonBin is the interpreter the sidecar runs on.
+	DefaultPythonBin = "python3"
+	// DefaultOpenVPNDev is the tunnel device the engine asks openvpn for. A host
+	// where another OpenVPN manager already owns tun0 sets LXGATE_OPENVPN_DEV to
+	// a free name (a second openvpn on a busy tun device fails with EBUSY).
+	DefaultOpenVPNDev      = "tun0"
 	DefaultDataDir    = "/opt/lxgate/vpngate_data"
 	DefaultInstallDir = "/opt/lxgate"
 
@@ -52,6 +57,10 @@ type Config struct {
 	DataDir    string
 	APIPort    int
 	ProxyPort  int
+	// OpenVPNDev is the tunnel interface name handed to the engine. It never
+	// changes the panel's own ports; it only keeps two tunnel managers on one
+	// host from fighting over tun0.
+	OpenVPNDev string
 	Token      string
 	// APITimeout bounds one request to the engine's HTTP API.
 	APITimeout time.Duration
@@ -70,6 +79,7 @@ func LoadConfig() Config {
 		DataDir:      firstNonEmpty(os.Getenv("LXGATE_VPNGATE_DATA_DIR"), os.Getenv("VPNGATE_DATA_DIR")),
 		APIPort:      envInt("LXGATE_VPNGATE_API_PORT", DefaultAPIPort),
 		ProxyPort:    envInt("LOCAL_PROXY_PORT", DefaultProxyPort),
+		OpenVPNDev:   firstNonEmpty(os.Getenv("LXGATE_OPENVPN_DEV"), DefaultOpenVPNDev),
 		Token:        strings.TrimSpace(os.Getenv("LXGATE_VPNGATE_TOKEN")),
 		APITimeout:   defaultAPITimeout,
 		StartTimeout: defaultStartTimeout,

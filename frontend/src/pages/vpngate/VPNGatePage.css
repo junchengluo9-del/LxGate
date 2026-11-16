@@ -92,6 +92,139 @@
   max-height: 120px;
 }
 
+/* Traffic takeover card — the primary control on the page. */
+
+.vg-takeover-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vg-takeover-modes {
+  max-width: 640px;
+}
+
+.vg-takeover-head .lg-subtitle {
+  margin: 0;
+}
+
+.vg-inbound-picker {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--lg-border);
+  background: var(--lg-surface-muted, rgba(127, 127, 127, 0.04));
+}
+
+.vg-inbound-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.vg-inbound-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--lg-text-dim);
+}
+
+.vg-inbound-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.vg-inbound-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--lg-border);
+  background: var(--lg-surface, transparent);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.vg-inbound-item:hover {
+  border-color: var(--lg-accent);
+}
+
+.vg-inbound-item.is-on {
+  border-color: var(--lg-accent);
+  background: var(--lg-accent-soft);
+}
+
+.vg-inbound-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.vg-inbound-remark {
+  font-weight: 600;
+  font-size: 0.86rem;
+  color: var(--lg-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vg-inbound-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  color: var(--lg-text-dim);
+}
+
+.vg-takeover-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--lg-border);
+}
+
+.vg-takeover-foot .lg-subtitle {
+  margin: 0;
+}
+
+.vg-advanced-card .ant-collapse-header {
+  padding-inline: 0 !important;
+}
+
+.vg-advanced-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--lg-text-dim);
+}
+
+.vg-advanced-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.vg-advanced-grid .lg-mono {
+  font-size: 0.82rem;
+  color: var(--lg-text);
+  overflow-wrap: anywhere;
+}
+
 .vg-host {
   display: flex;
   align-items: center;

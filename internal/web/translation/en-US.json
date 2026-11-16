@@ -318,7 +318,14 @@
         "mlkem": "This core (Xray v26.9.8+) requires ML-KEM-capable clients: only current Xray-core clients (v2rayN/v2rayNG, fp chrome) and Mihomo with support-x25519mlkem768 can connect. Shadowrocket, older Clash and sing-box will NOT work (online but no traffic). The client-compatible core is v26.6.27. Switch to #version# anyway?",
         "minver": "This core (v26.7.11–v26.9.7) rejects clients that do not report an Xray version by default: Shadowrocket, Clash/Mihomo and sing-box will NOT work. The client-compatible core is v26.6.27. Switch to #version# anyway?"
       },
-      "xraySwitchAnyway": "Switch anyway"
+      "xraySwitchAnyway": "Switch anyway",
+      "currentExit": {
+        "title": "Current exit",
+        "mode": "Takeover",
+        "connect": "Connect",
+        "open": "Open VPNGate",
+        "country": "Switch country"
+      }
     },
     "inbounds": {
       "totalDownUp": "Total Sent/Received",
@@ -803,7 +810,14 @@
         "maxVersion": "Max version",
         "headerName": "Header name",
         "headerValue": "Header value",
-        "echConfig": "ECH config"
+        "echConfig": "ECH config",
+        "exitRoute": "Exit route",
+        "exitDirect": "Direct from this server",
+        "exitVpngate": "VPNGate exit",
+        "exitHint": "Saved with VPNGate, this inbound is added to the takeover rule and its clients leave through the tunnel.",
+        "exitAllHint": "Takeover is set to \"All inbounds\", so every inbound already exits through VPNGate. Choosing Direct moves the others into \"Selected inbounds\" without this one.",
+        "exitManualHint": "Takeover is manual. Saving with VPNGate switches it to \"Selected inbounds\" and adds this inbound.",
+        "exitApplyFailed": "Inbound saved, but the exit route was not applied: {msg}"
       },
       "info": {
         "mode": "Mode",
@@ -822,7 +836,12 @@
         "peerNumber": "Peer {n}",
         "peerNumberConfig": "Peer {n} config"
       },
-      "sniffingDestOverride": "Destination override"
+      "sniffingDestOverride": "Destination override",
+      "exitColumn": "Exit",
+      "exitVpngate": "VPNGate",
+      "exitDirect": "Direct",
+      "exitVpngateHint": "This inbound leaves through the VPNGate exit.",
+      "exitDirectHint": "This inbound leaves directly from this server."
     },
     "clients": {
       "tabBasics": "Basics",
@@ -2562,7 +2581,8 @@
         "proxy": "Local proxy",
         "xray": "Xray outbound",
         "nodes": "{count} nodes cached",
-        "restarts": "{count} restarts"
+        "restarts": "{count} restarts",
+        "takeover": "Takeover"
       },
       "routingTitle": "Routing",
       "mode": "Mode",
@@ -2613,6 +2633,33 @@
       "toasts": {
         "actionDone": "Done",
         "disconnected": "Tunnel disconnected"
+      },
+      "takeover": {
+        "title": "Traffic takeover",
+        "hint": "Choose which inbounds leave the internet through the VPNGate exit. The panel keeps one routing rule and applies it to Xray for you — no JSON editing.",
+        "applied": "Takeover applied",
+        "apply": "Apply",
+        "selectAll": "Select all",
+        "clearAll": "Clear",
+        "selectedCount": "{count} of {total} inbounds",
+        "inboundsEmpty": "No inbounds yet. Add an inbound first, then pick the ones that should exit through VPNGate.",
+        "modes": {
+          "all": "All inbounds",
+          "selected": "Selected inbounds",
+          "manual": "Manual routing only"
+        },
+        "hints": {
+          "all": "Every inbound on this panel exits through VPNGate. Private-network, DNS and panel API rules still take precedence, so the panel stays reachable.",
+          "selected": "Only the inbounds you tick below exit through VPNGate. Everything else keeps leaving directly from this server.",
+          "manual": "The panel adds no routing rule. Your own Xray routing stays exactly as you wrote it."
+        },
+        "advanced": {
+          "title": "Advanced technical settings",
+          "proxy": "Local exit proxy",
+          "device": "Tunnel device",
+          "rule": "Managed rule",
+          "engine": "Engine API"
+        }
       }
     },
     "system": {

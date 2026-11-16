@@ -9,6 +9,27 @@ Thanks for taking the time to contribute to lxgate. This guide gets a developmen
 - **Git**
 - **A C compiler** — required by the CGo SQLite driver (`github.com/mattn/go-sqlite3`). Linux and macOS already ship one; for Windows see below.
 
+### CPU portability of the CGo SQLite driver
+
+The bundled binary has to run on CPUs older than the build host. A `go-sqlite3`
+object compiled with `-march=native` on a recent machine can contain instructions
+(newer AVX-512 sets, for one) that an older Xeon does not have, and the panel then
+dies with `SIGILL: illegal instruction` on its first database access — `lxgate -v`
+still works, which makes it look like a database problem.
+
+Build any binary you intend to ship, or to copy to another machine, with a
+portable floor instead of the host's own CPU:
+
+```bash
+CGO_ENABLED=1 CGO_CFLAGS="-O2 -march=x86-64-v2" CGO_CXXFLAGS="-O2 -march=x86-64-v2" \
+  go build -trimpath -buildvcs=false -o lxgate .
+```
+
+`x86-64-v2` (SSE4.2/POPCNT era, 2009+) is the safe floor for amd64 releases; keep
+the flag off for arm64 builds, where the toolchain default already targets the
+architecture baseline. The same rule applies to any cross build: set `CC` to the
+cross compiler *and* keep an explicit `-march`.
+
 ### Windows: MinGW-w64
 
 `go build` on Windows fails with `cgo: C compiler "gcc" not found` until a GCC toolchain is installed. Two options — pick whichever fits.

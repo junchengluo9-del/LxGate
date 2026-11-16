@@ -128,6 +128,11 @@ OPENVPN_TEST_TIMEOUT_SECONDS = env_int("OPENVPN_TEST_TIMEOUT_SECONDS", 35, 1)
 OPENVPN_CMD = os.environ.get("OPENVPN_CMD", "openvpn")
 OPENVPN_AUTH_USER = os.environ.get("OPENVPN_AUTH_USER", "vpn")
 OPENVPN_AUTH_PASS = os.environ.get("OPENVPN_AUTH_PASS", "vpn")
+# Persistent tunnel device. Defaults to tun0. A host where another OpenVPN
+# manager already owns tun0 (LxGate next to aimilivpn, for example) sets
+# LXGATE_OPENVPN_DEV to a free name: a second openvpn on a busy tun device
+# fails with "Cannot ioctl TUNSETIFF tun0: Device or resource busy".
+OPENVPN_DEV = os.environ.get("LXGATE_OPENVPN_DEV", "").strip() or "tun0"
 def env_flag(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name, "").strip().lower()
     if raw == "":
@@ -895,7 +900,8 @@ def get_openvpn_version() -> float:
     _openvpn_version = 2.4
     return _openvpn_version
 
-def openvpn_command(config_file: str, route_nopull: bool, dev: str = "tun0") -> list[str]:
+def openvpn_command(config_file: str, route_nopull: bool, dev: str | None = None) -> list[str]:
+    dev = dev or OPENVPN_DEV
     command = split_openvpn_command()
     command.extend(
         [
@@ -1038,7 +1044,8 @@ def update_handshake_status(line_lower: str) -> None:
             set_state(active_node_latency=short_status, last_check_message=detailed_desc)
             break
 
-def run_openvpn_until_ready(config_file: str, keep_alive: bool, route_nopull: bool, timeout: int | None = None, dev: str = "tun0") -> tuple[bool, str, subprocess.Popen[str] | None]:
+def run_openvpn_until_ready(config_file: str, keep_alive: bool, route_nopull: bool, timeout: int | None = None, dev: str | None = None) -> tuple[bool, str, subprocess.Popen[str] | None]:
+    dev = dev or OPENVPN_DEV
     limit = timeout if timeout is not None else OPENVPN_TEST_TIMEOUT_SECONDS
     try:
         process = subprocess.Popen(
@@ -1134,7 +1141,8 @@ def run_openvpn_until_ready(config_file: str, keep_alive: bool, route_nopull: bo
     return ok, message, process
 
 
-def setup_policy_routing(interface: str = "tun0") -> None:
+def setup_policy_routing(interface: str | None = None) -> None:
+    interface = interface or OPENVPN_DEV
     try:
         subprocess.run(["ip", "rule", "del", "table", "100"], capture_output=True, timeout=2)
     except Exception:
@@ -1565,7 +1573,7 @@ def connect_node(node_id: str) -> str:
             active_openvpn_node_id = node_id
         
         set_state(active_node_latency="配置路由", last_check_message="正在配置策略路由规则与流量转发...")
-        setup_policy_routing("tun0")
+        setup_policy_routing(OPENVPN_DEV)
         
         global last_active_ping_time, last_active_latency
         last_active_ping_time = time.time()
@@ -1608,7 +1616,7 @@ def connect_node(node_id: str) -> str:
             
         latency_str = f"{last_active_latency} ms" if last_active_latency > 0 else "检测超时"
         set_state(active_openvpn_node_id=node_id, is_connecting=False, last_check_message=f"Connected {node_id}", active_node_latency=latency_str)
-        log_to_json("INFO", "VPN", f"节点 {node_id} 连接成功，出口网卡 tun0 已启用")
+        log_to_json("INFO", "VPN", f"节点 {node_id} 连接成功，出口网卡 {OPENVPN_DEV} 已启用")
         return f"Connected {node_id}"
     except Exception as exc:
         if stopped_existing or (active_openvpn_node_id == node_id and not active_openvpn_running()):
@@ -5743,12 +5751,12 @@ def check_proxy_health() -> dict[str, Any]:
             except Exception:
                 pass
 
-    # 2. 检测虚拟网卡 tun0 是否存在 (Linux 下)
-    tun_path = Path("/sys/class/net/tun0")
+    # 2. 检测虚拟网卡是否存在 (Linux 下)
+    tun_path = Path(f"/sys/class/net/{OPENVPN_DEV}")
     if sys.platform.startswith("linux") and not tun_path.exists():
         return {
             "ok": False,
-            "error": "[错误代码 3004] [ERR_ROUTE_DEV_NOT_FOUND] VPN 虚拟网卡 (tun0) 未启用，请确保当前已成功连接 VPN 节点"
+            "error": f"[错误代码 3004] [ERR_ROUTE_DEV_NOT_FOUND] VPN 虚拟网卡 ({OPENVPN_DEV}) 未启用，请确保当前已成功连接 VPN 节点"
         }
 
     # 3. 使用 curl 通过本地 SOCKS5 代理接口测试 IP 与实际延迟
@@ -6300,19 +6308,28 @@ def perform_app_update(force: bool = False, repo_dir: Path | None = None) -> dic
     return result
 
 
+def service_restart_unit() -> str:
+    """服务单元名：嵌入式模式下引擎属于 LxGate，重启它必须重启 lxgate.service。"""
+    if EMBEDDED_MODE:
+        return "lxgate.service"
+    return "aimilivpn.service"
+
+
 def service_restart_command() -> list[str] | None:
+    unit = service_restart_unit()
     systemctl = shutil.which("systemctl")
     if systemctl:
-        for unit in (
-            "/lib/systemd/system/aimilivpn.service",
-            "/etc/systemd/system/aimilivpn.service",
-            "/usr/lib/systemd/system/aimilivpn.service",
+        for path in (
+            f"/lib/systemd/system/{unit}",
+            f"/etc/systemd/system/{unit}",
+            f"/usr/lib/systemd/system/{unit}",
         ):
-            if Path(unit).exists():
-                return [systemctl, "restart", "aimilivpn.service"]
+            if Path(path).exists():
+                return [systemctl, "restart", unit]
     rc_service = shutil.which("rc-service")
-    if rc_service and Path("/etc/init.d/aimilivpn").exists():
-        return [rc_service, "aimilivpn", "restart"]
+    init_name = unit.removesuffix(".service")
+    if rc_service and Path(f"/etc/init.d/{init_name}").exists():
+        return [rc_service, init_name, "restart"]
     return None
 
 
@@ -6560,8 +6577,8 @@ class Handler(BaseHTTPRequestHandler):
             if ovpn_ok:
                 ovpn_details = f"已连接节点: {active_openvpn_node_id}"
                 if sys.platform.startswith("linux"):
-                    if not Path("/sys/class/net/tun0").exists():
-                        ovpn_err = "[警告] 虚拟网卡 (tun0) 未启用，可能存在策略路由配置问题。"
+                    if not Path(f"/sys/class/net/{OPENVPN_DEV}").exists():
+                        ovpn_err = f"[警告] 虚拟网卡 ({OPENVPN_DEV}) 未启用，可能存在策略路由配置问题。"
             else:
                 if active_openvpn_node_id:
                     ovpn_err = "连接已中断或 OpenVPN 核心程序异常退出。"

@@ -5,6 +5,8 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
+  Collapse,
   ConfigProvider,
   Empty,
   Input,
@@ -29,6 +31,7 @@ import {
   LinkOutlined,
   PoweroffOutlined,
   ReloadOutlined,
+  SettingOutlined,
   SwapOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
@@ -36,6 +39,12 @@ import {
 import { HttpUtil } from '@/utils';
 import { useTheme } from '@/hooks/useTheme';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import {
+  useSetVpngateTakeover,
+  useVpngateTakeoverQuery,
+  type VpngateInboundOption,
+  type VpngateTakeoverMode,
+} from '@/api/queries/useVpngateTakeover';
 import AppSidebar from '@/layouts/AppSidebar';
 import TopStatusBar from '@/layouts/TopStatusBar';
 import { setMessageInstance } from '@/utils/messageBus';
@@ -106,6 +115,7 @@ interface SupervisorStatus {
   restarts?: number;
   apiAddress?: string;
   proxyAddress?: string;
+  openvpnDev?: string;
   socksUrl?: string;
   httpProxyUrl?: string;
   uptimeSeconds?: number;
@@ -135,6 +145,7 @@ interface LogEntry {
 }
 
 const MODE_VALUES: RoutingMode[] = ['auto', 'fixed_region', 'fixed_ip', 'favorites'];
+const TAKEOVER_MODES: VpngateTakeoverMode[] = ['all', 'selected', 'manual'];
 
 // Nodes are polled while the page is open: the engine re-tests candidates in the
 // background and the table should follow without a manual refresh.
@@ -149,6 +160,19 @@ function toneForNode(node: VpnGateNode): 'ok' | 'warn' | 'bad' {
   if (latency < 200) return 'ok';
   if (latency < 600) return 'warn';
   return 'bad';
+}
+
+/** The takeover draft the operator is editing, before it is applied. */
+interface TakeoverDraft {
+  mode: VpngateTakeoverMode;
+  tags: string[];
+}
+
+function sameTags(a: string[], b: string[]) {
+  if (a.length !== b.length) return false;
+  const left = [...a].sort();
+  const right = [...b].sort();
+  return left.every((tag, index) => tag === right[index]);
 }
 
 export default function VPNGatePage() {
@@ -167,6 +191,8 @@ export default function VPNGatePage() {
   const [favFallback, setFavFallback] = useState(true);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [filter, setFilter] = useState('');
+  const [draft, setDraft] = useState<TakeoverDraft | null>(null);
+  const [draftDirty, setDraftDirty] = useState(false);
 
   const statusQuery = useQuery({
     queryKey: ['vpngate', 'status'],
@@ -204,10 +230,15 @@ export default function VPNGatePage() {
     retry: false,
   });
 
+  const takeoverQuery = useVpngateTakeoverQuery();
+  const takeoverMutation = useSetVpngateTakeover();
+  const takeover = takeoverQuery.data;
+
   const state = nodesQuery.data?.state ?? {};
   const nodes = nodesQuery.data?.nodes ?? [];
   const supervisor = statusQuery.data?.supervisor;
   const binding = statusQuery.data?.xray;
+  const inbounds = takeover?.inbounds ?? [];
 
   // The engine is the source of truth for routing; seed the controls from it once
   // and then leave the operator's edits alone.
@@ -219,7 +250,19 @@ export default function VPNGatePage() {
     setIpType(state.routing_ip_type || 'all');
     setFavFallback(state.fav_fail_fallback !== false);
     setSeeded(true);
-  }, [state.routing_mode, state.force_country, state.routing_ip_type, state.fav_fail_fallback, seeded]);
+  }, [
+    state.routing_mode,
+    state.force_country,
+    state.routing_ip_type,
+    state.fav_fail_fallback,
+    seeded,
+  ]);
+
+  // The takeover draft mirrors the server until the operator touches it.
+  useEffect(() => {
+    if (!takeover || draftDirty) return;
+    setDraft({ mode: takeover.mode, tags: takeover.inboundTags });
+  }, [takeover, draftDirty]);
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['vpngate'] });
@@ -233,9 +276,11 @@ export default function VPNGatePage() {
       return msg;
     },
     onSuccess: (_data, variables) => {
-      messageApi.success(variables.url.includes('disconnect')
-        ? t('pages.vpngate.toasts.disconnected')
-        : t('pages.vpngate.toasts.actionDone'));
+      messageApi.success(
+        variables.url.includes('disconnect')
+          ? t('pages.vpngate.toasts.disconnected')
+          : t('pages.vpngate.toasts.actionDone'),
+      );
       invalidate();
     },
     onError: (error: Error) => {
@@ -255,6 +300,47 @@ export default function VPNGatePage() {
     (nodeId: string) => action.mutate({ url: '/panel/api/vpngate/connect', body: { id: nodeId } }),
     [action],
   );
+
+  const setTakeoverMode = useCallback(
+    (next: VpngateTakeoverMode) => {
+      setDraft((current) => ({
+        mode: next,
+        tags: current?.tags ?? takeover?.inboundTags ?? [],
+      }));
+      setDraftDirty(true);
+    },
+    [takeover],
+  );
+
+  const toggleTakeoverTag = useCallback((tag: string, on: boolean) => {
+    setDraftDirty(true);
+    setDraft((current) => {
+      const base = current ?? { mode: 'selected' as VpngateTakeoverMode, tags: [] };
+      const tags = on
+        ? Array.from(new Set([...base.tags, tag]))
+        : base.tags.filter((value) => value !== tag);
+      return { mode: base.mode === 'manual' ? 'selected' : base.mode, tags };
+    });
+  }, []);
+
+  const applyTakeover = useCallback(() => {
+    if (!draft) return;
+    takeoverMutation.mutate(
+      { mode: draft.mode, inboundTags: draft.mode === 'all' ? [] : draft.tags },
+      {
+        onSuccess: (saved) => {
+          setDraftDirty(false);
+          setDraft({ mode: saved.mode, tags: saved.inboundTags });
+          messageApi.success(t('pages.vpngate.takeover.applied'));
+          invalidate();
+        },
+        onError: (error: Error) => {
+          messageApi.error(error.message);
+          invalidate();
+        },
+      },
+    );
+  }, [draft, takeoverMutation, messageApi, t, invalidate]);
 
   const countries = useMemo(() => {
     const seen = new Map<string, string>();
@@ -353,16 +439,93 @@ export default function VPNGatePage() {
     if (entries.length === 0) return '';
     return entries
       .slice(-160)
-      .map((entry) => `[${entry.timestamp ?? ''}] ${entry.level ?? ''} ${entry.module ?? ''} ${entry.message ?? ''}`.trim())
+      .map((entry) =>
+        `[${entry.timestamp ?? ''}] ${entry.level ?? ''} ${entry.module ?? ''} ${entry.message ?? ''}`.trim(),
+      )
       .join('\n');
   }, [logsQuery.data]);
 
   const activeNode = nodes.find((node) => node.id === state.active_openvpn_node_id);
-  const exitLabel = activeNode?.country || activeNode?.country_short || t('pages.vpngate.unknownCountry');
-  const exitLatency = activeNode?.latency_ms || activeNode?.ping || Number(state.active_node_latency) || 0;
+  const exitLabel =
+    activeNode?.country || activeNode?.country_short || t('pages.vpngate.unknownCountry');
+  const exitLatency =
+    activeNode?.latency_ms || activeNode?.ping || Number(state.active_node_latency) || 0;
 
   const pageClass = `vpngate-page ${isDark ? 'is-dark' : ''} ${isUltra ? 'is-ultra' : ''}`.trim();
   const unavailable = supervisor && (!supervisor.enabled || !supervisor.available);
+
+  const draftMode = draft?.mode ?? takeover?.mode ?? 'manual';
+  const draftTags = draft?.tags ?? [];
+  const selectedTags = draftMode === 'all' ? inbounds.map((inbound) => inbound.tag) : draftTags;
+  const takeoverPending =
+    !!takeover &&
+    (draftMode !== takeover.mode ||
+      !sameTags(draftMode === 'all' ? [] : draftTags, takeover.inboundTags));
+
+  const advancedItems = [
+    {
+      key: 'advanced',
+      label: (
+        <span className="vg-advanced-label">
+          <SettingOutlined aria-hidden /> {t('pages.vpngate.takeover.advanced.title')}
+        </span>
+      ),
+      children: (
+        <div className="vg-advanced">
+          <div className="vg-advanced-grid">
+            <div className="vg-field">
+              <span className="vg-field-label">{t('pages.vpngate.takeover.advanced.proxy')}</span>
+              <span className="lg-mono">{binding?.socksUrl || supervisor?.socksUrl || '—'}</span>
+            </div>
+            <div className="vg-field">
+              <span className="vg-field-label">{t('pages.vpngate.takeover.advanced.device')}</span>
+              <span className="lg-mono">{supervisor?.openvpnDev || 'tun0'}</span>
+            </div>
+            <div className="vg-field">
+              <span className="vg-field-label">{t('pages.vpngate.takeover.advanced.rule')}</span>
+              <span className="lg-mono">
+                {binding?.bound
+                  ? `#${takeover?.ruleIndex ?? -1} · ${binding?.tag || 'vpngate-out'}`
+                  : t('pages.vpngate.notBound')}
+              </span>
+            </div>
+            <div className="vg-field">
+              <span className="vg-field-label">{t('pages.vpngate.takeover.advanced.engine')}</span>
+              <span className="lg-mono">{supervisor?.apiAddress || '127.0.0.1:18787'}</span>
+            </div>
+          </div>
+
+          <div className="vg-bind">
+            <div>
+              <h4 className="lg-title">{t('pages.vpngate.xrayBindTitle')}</h4>
+              <p className="lg-subtitle">{t('pages.vpngate.xrayBindHint')}</p>
+              {binding?.ruleExample && <pre className="lg-log vg-rule">{binding.ruleExample}</pre>}
+            </div>
+            <Space wrap>
+              <Button
+                type={binding?.bound ? 'default' : 'primary'}
+                icon={<ApiOutlined />}
+                loading={action.isPending}
+                onClick={() => action.mutate({ url: '/panel/api/vpngate/xray-bind' })}
+              >
+                {binding?.bound
+                  ? t('pages.vpngate.rebindOutbound')
+                  : t('pages.vpngate.bindOutbound')}
+              </Button>
+              <Button
+                icon={<PoweroffOutlined />}
+                disabled={!binding?.bound}
+                loading={action.isPending}
+                onClick={() => action.mutate({ url: '/panel/api/vpngate/xray-unbind' })}
+              >
+                {t('pages.vpngate.unbindOutbound')}
+              </Button>
+            </Space>
+          </div>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <ConfigProvider theme={antdThemeConfig}>
@@ -413,6 +576,117 @@ export default function VPNGatePage() {
                   />
                 )}
 
+                <Card className="vg-takeover" title={t('pages.vpngate.takeover.title')}>
+                  <div className="vg-takeover-head">
+                    <Segmented
+                      block={isMobile}
+                      size={isMobile ? 'middle' : 'large'}
+                      className="vg-takeover-modes"
+                      value={draftMode}
+                      onChange={(value) => setTakeoverMode(value as VpngateTakeoverMode)}
+                      options={TAKEOVER_MODES.map((value) => ({
+                        value,
+                        label: t(`pages.vpngate.takeover.modes.${value}`),
+                      }))}
+                    />
+                    <p className="lg-subtitle">{t(`pages.vpngate.takeover.hints.${draftMode}`)}</p>
+                  </div>
+
+                  {draftMode === 'selected' && (
+                    <div className="vg-inbound-picker">
+                      <div className="vg-inbound-head">
+                        <span className="vg-inbound-count">
+                          {t('pages.vpngate.takeover.selectedCount', {
+                            count: draftTags.length,
+                            total: inbounds.length,
+                          })}
+                        </span>
+                        <Space size={8}>
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              setDraftDirty(true);
+                              setDraft({
+                                mode: 'selected',
+                                tags: inbounds.map((inbound) => inbound.tag),
+                              });
+                            }}
+                            disabled={inbounds.length === 0}
+                          >
+                            {t('pages.vpngate.takeover.selectAll')}
+                          </Button>
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              setDraftDirty(true);
+                              setDraft({ mode: 'selected', tags: [] });
+                            }}
+                            disabled={draftTags.length === 0}
+                          >
+                            {t('pages.vpngate.takeover.clearAll')}
+                          </Button>
+                        </Space>
+                      </div>
+                      {inbounds.length === 0 ? (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description={t('pages.vpngate.takeover.inboundsEmpty')}
+                        />
+                      ) : (
+                        <div className="vg-inbound-list">
+                          {inbounds.map((inbound: VpngateInboundOption) => (
+                            <label
+                              key={inbound.tag || inbound.id}
+                              className={`vg-inbound-item${draftTags.includes(inbound.tag) ? ' is-on' : ''}`}
+                            >
+                              <Checkbox
+                                checked={draftTags.includes(inbound.tag)}
+                                onChange={(event) =>
+                                  toggleTakeoverTag(inbound.tag, event.target.checked)
+                                }
+                              />
+                              <span className="vg-inbound-main">
+                                <span className="vg-inbound-remark">
+                                  {inbound.remark || inbound.tag || `#${inbound.id}`}
+                                </span>
+                                <span className="vg-inbound-meta">
+                                  <Tag bordered={false} color="purple">
+                                    {inbound.protocol}
+                                  </Tag>
+                                  <span className="lg-mono">:{inbound.port}</span>
+                                  {inbound.enable === false && (
+                                    <Tag bordered={false}>{t('disabled')}</Tag>
+                                  )}
+                                </span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="vg-takeover-foot">
+                    <span className="lg-subtitle">
+                      {draftMode === 'all'
+                        ? t('pages.vpngate.takeover.modes.all')
+                        : t('pages.vpngate.takeover.selectedCount', {
+                            count: selectedTags.length,
+                            total: inbounds.length,
+                          })}
+                    </span>
+                    <Button
+                      type="primary"
+                      icon={<SwapOutlined />}
+                      loading={takeoverMutation.isPending}
+                      disabled={!draft || !takeoverPending}
+                      onClick={applyTakeover}
+                    >
+                      {t('pages.vpngate.takeover.apply')}
+                    </Button>
+                  </div>
+                </Card>
+
                 <div className="vg-tiles">
                   <div className="lg-card vg-tile">
                     <span className="vg-tile-label">{t('pages.vpngate.tiles.engine')}</span>
@@ -427,7 +701,8 @@ export default function VPNGatePage() {
                       </span>
                     </div>
                     <span className="vg-tile-foot lg-mono">
-                      {supervisor?.apiAddress || '127.0.0.1'} · PID {supervisor?.pid || '—'}
+                      {t('pages.vpngate.takeover.advanced.device')}{' '}
+                      {supervisor?.openvpnDev || 'tun0'}
                     </span>
                   </div>
 
@@ -446,8 +721,13 @@ export default function VPNGatePage() {
                   </div>
 
                   <div className="lg-card vg-tile">
-                    <span className="vg-tile-label">{t('pages.vpngate.tiles.proxy')}</span>
-                    <div className="vg-tile-value lg-mono">{supervisor?.socksUrl || 'socks5://127.0.0.1:7928'}</div>
+                    <span className="vg-tile-label">{t('pages.vpngate.tiles.takeover')}</span>
+                    <div className="vg-tile-value">
+                      <span className={`lg-pill ${draftMode === 'manual' ? 'warn' : 'ok'}`}>
+                        <span className="lg-dot" aria-hidden />
+                        {t(`pages.vpngate.takeover.modes.${draftMode}`)}
+                      </span>
+                    </div>
                     <span className="vg-tile-foot">
                       {t('pages.vpngate.tiles.nodes', { count: nodes.length })}
                     </span>
@@ -458,7 +738,9 @@ export default function VPNGatePage() {
                     <div className="vg-tile-value">
                       <span className={`lg-pill ${binding?.bound ? 'ok' : 'warn'}`}>
                         <span className="lg-dot" aria-hidden />
-                        {binding?.bound ? binding?.tag || 'vpngate-out' : t('pages.vpngate.notBound')}
+                        {binding?.bound
+                          ? binding?.tag || 'vpngate-out'
+                          : t('pages.vpngate.notBound')}
                       </span>
                     </div>
                     <span className="vg-tile-foot">
@@ -554,36 +836,10 @@ export default function VPNGatePage() {
                   </div>
 
                   <p className="lg-subtitle">{t('pages.vpngate.routingHint')}</p>
+                </Card>
 
-                  <div className="vg-bind">
-                    <div>
-                      <h4 className="lg-title">{t('pages.vpngate.xrayBindTitle')}</h4>
-                      <p className="lg-subtitle">{t('pages.vpngate.xrayBindHint')}</p>
-                      {binding?.ruleExample && (
-                        <pre className="lg-log vg-rule">{binding.ruleExample}</pre>
-                      )}
-                    </div>
-                    <Space wrap>
-                      <Button
-                        type={binding?.bound ? 'default' : 'primary'}
-                        icon={<ApiOutlined />}
-                        loading={action.isPending}
-                        onClick={() => action.mutate({ url: '/panel/api/vpngate/xray-bind' })}
-                      >
-                        {binding?.bound
-                          ? t('pages.vpngate.rebindOutbound')
-                          : t('pages.vpngate.bindOutbound')}
-                      </Button>
-                      <Button
-                        icon={<PoweroffOutlined />}
-                        disabled={!binding?.bound}
-                        loading={action.isPending}
-                        onClick={() => action.mutate({ url: '/panel/api/vpngate/xray-unbind' })}
-                      >
-                        {t('pages.vpngate.unbindOutbound')}
-                      </Button>
-                    </Space>
-                  </div>
+                <Card className="vg-advanced-card" styles={{ body: { paddingTop: 4 } }}>
+                  <Collapse ghost items={advancedItems} bordered={false} />
                 </Card>
 
                 <Card

@@ -29,6 +29,7 @@ import VitalTile from './VitalTile';
 import ThroughputCard from './ThroughputCard';
 import ConnectionsCard from './ConnectionsCard';
 import SystemStrip from './SystemStrip';
+import CurrentExitCard from './CurrentExitCard';
 import { mean, peak, useOverviewHistory } from './useOverviewHistory';
 import type { PanelUpdateInfo } from './PanelUpdateModal';
 const JsonEditor = lazy(() => import('@/components/form/JsonEditor'));
@@ -172,7 +173,6 @@ export default function IndexPage() {
         <AppSidebar />
 
         <Layout className="content-shell">
-
           <TopStatusBar />
           <Layout.Content className="content-area">
             <Spin
@@ -278,6 +278,8 @@ export default function IndexPage() {
                       isMobile={isMobile}
                     />
                   </div>
+
+                  <CurrentExitCard isMobile={isMobile} />
 
                   <div className="ov-mid">
                     <ThroughputCard

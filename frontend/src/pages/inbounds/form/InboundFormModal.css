@@ -60,3 +60,36 @@
     padding-inline: 10px;
   }
 }
+
+/* 出口去向 — one-stop exit choice on the basic tab. */
+.inbound-exit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.inbound-exit-label {
+  font-size: 0.86rem;
+  font-weight: 550;
+  color: var(--lg-text, inherit);
+}
+
+.inbound-exit-hint {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--lg-text-dim, rgba(127, 127, 127, 0.9));
+}
+
+@media (max-width: 768px) {
+  .inbound-exit-field .ant-radio-group {
+    display: flex;
+    width: 100%;
+  }
+
+  .inbound-exit-field .ant-radio-button-wrapper {
+    flex: 1;
+    text-align: center;
+  }
+}

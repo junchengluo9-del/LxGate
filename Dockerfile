@@ -28,11 +28,18 @@ COPY --from=frontend /src/internal/web/dist ./internal/web/dist
 
 ENV CGO_ENABLED=1
 ENV CGO_CFLAGS="-D_LARGEFILE64_SOURCE"
+# Keep the CGo SQLite object at the architecture's portable baseline: a
+# -march=native object from a newer build host SIGILLs on older CPUs.
+ARG TARGETARCH
 # Self-update / version checks follow this "owner/repo" (docker.yml passes the
 # building repository). Empty leaves the panel's self-update disabled with a
 # clear message instead of pointing at a placeholder.
 ARG LXGATE_RELEASE_REPO=""
-RUN go build -ldflags "-w -s -X github.com/mhsanaei/3x-ui/v3/internal/config.releaseRepo=${LXGATE_RELEASE_REPO}" -o build/lxgate .
+RUN case "$TARGETARCH" in \
+      amd64) CGO_CFLAGS="$CGO_CFLAGS -O2 -march=x86-64-v2"; CGO_CXXFLAGS="-O2 -march=x86-64-v2" ;; \
+    esac; \
+    export CGO_CFLAGS CGO_CXXFLAGS; \
+    go build -ldflags "-w -s -X github.com/mhsanaei/3x-ui/v3/internal/config.releaseRepo=${LXGATE_RELEASE_REPO}" -o build/lxgate .
 RUN ./DockerInit.sh "$TARGETARCH" "$TARGETVARIANT"
 
 # ========================================================
