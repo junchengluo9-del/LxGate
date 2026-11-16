@@ -38,19 +38,24 @@ func ApplyEnvAliases() bool {
 			}
 			_ = os.Setenv("XUI_"+strings.TrimPrefix(k, "LXGATE_"), v)
 		case strings.HasPrefix(k, "XUI_"):
-			if _, has := os.LookupEnv("L" + k); !has {
+			if _, has := os.LookupEnv(aliasName(k)); !has {
 				legacy[k] = true
 			}
 		}
 	}
 	legacyEnvInUse = legacyEnvInUse[:0]
 	for k := range legacy {
-		if _, has := os.LookupEnv("L" + k); !has {
+		if _, has := os.LookupEnv(aliasName(k)); !has {
 			legacyEnvInUse = append(legacyEnvInUse, k)
 		}
 	}
 	sort.Strings(legacyEnvInUse)
 	return true
+}
+
+// aliasName maps an XUI_* variable back to its canonical LXGATE_* name.
+func aliasName(key string) string {
+	return "LXGATE_" + strings.TrimPrefix(key, "XUI_")
 }
 
 // LegacyEnvInUse lists XUI_* variables that are set without an LXGATE_
