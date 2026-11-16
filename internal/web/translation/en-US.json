@@ -126,7 +126,9 @@
     "openMenu": "Open menu",
     "pinSidebar": "Pin sidebar",
     "unpinSidebar": "Unpin sidebar",
-    "subFormats": "Sub Formats"
+    "subFormats": "Sub Formats",
+    "vpngate": "VPNGate Exit",
+    "system": "System & Update"
   },
   "pages": {
     "login": {
@@ -158,7 +160,7 @@
       "xrayUpdates": "Xray Updates",
       "xraySwitchClickDesk": "Choose carefully, as older versions may not be compatible with current configurations.",
       "updatePanel": "Update Panel",
-      "panelUpdateDesc": "This will update Lx-ui itself to the latest release and restart the panel service.",
+      "panelUpdateDesc": "This will update LxGate itself to the latest release and restart the panel service.",
       "currentPanelVersion": "Current panel version",
       "latestPanelVersion": "Latest panel version",
       "panelUpToDate": "Panel is up to date",
@@ -222,10 +224,10 @@
       "xraySwitchVersionDialogDesc": "This will change the Xray version to #version#.",
       "xraySwitchVersionPopover": "Xray updated successfully",
       "panelUpdateDialog": "Do you really want to update the panel?",
-      "panelUpdateDialogDesc": "This will update Lx-ui to #version# and restart the panel service.",
+      "panelUpdateDialogDesc": "This will update LxGate to #version# and restart the panel service.",
       "panelUpdateStartedPopover": "Panel update started",
       "panelUpdateFailedTitle": "Panel update failed",
-      "panelUpdateFailedDesc": "The update did not finish successfully. Check the server logs, or run 'lx-ui update' from the command line.",
+      "panelUpdateFailedDesc": "The update did not finish successfully. Check the server logs, or run 'lxgate update' from the command line.",
       "panelUpdateUnknownTitle": "Couldn't confirm the update finished",
       "panelUpdateUnknownDesc": "The panel didn't report a result in time. Reload to check the current version, or check the server logs.",
       "geofileUpdateDialog": "Do you really want to update the geofile?",
@@ -891,7 +893,7 @@
       "deleteHwidConfirm": "Remove this device? It will need to re-register on its next subscription fetch.",
       "hwidDeleted": "Device removed.",
       "clearHwidsConfirm": "Remove all registered devices? Every device will need to re-register on its next subscription fetch.",
-      "limitIpFail2banMissing": "Fail2ban is not installed, so the IP limit cannot be enforced. Install Fail2ban from the lx-ui bash menu to enable this option.",
+      "limitIpFail2banMissing": "Fail2ban is not installed, so the IP limit cannot be enforced. Install Fail2ban from the lxgate bash menu to enable this option.",
       "limitIpFail2banWindows": "Fail2ban is not available on Windows, so the IP limit cannot be enforced.",
       "limitIpDisabled": "The IP limit feature is disabled on this server.",
       "password": "Password",
@@ -1484,7 +1486,7 @@
       "subAnnounce": "Announce",
       "subAnnounceDesc": "The announcement text displayed in the VPN client. Supports client identity tokens: {{EMAIL}}, {{ID}}, {{SHORT_ID}}, {{SUB_ID}}, {{TELEGRAM_ID}}.",
       "subThemeDir": "Sub Theme Directory",
-      "subThemeDirDesc": "Absolute path to a folder containing a custom index.html/sub.html subscription page template (e.g. /etc/lx-ui/sub_templates/my-theme/). Leave empty to use the default page.",
+      "subThemeDirDesc": "Absolute path to a folder containing a custom index.html/sub.html subscription page template (e.g. /etc/lxgate/sub_templates/my-theme/). Leave empty to use the default page.",
       "subThemeDirDocs": "Template guide ↗",
       "subEnableRouting": "Enable routing",
       "happLinkEnable": "Encrypted subscription links",
@@ -2538,6 +2540,115 @@
       "routingScript": "Routing Script",
       "routingScriptDesc": "Path to a .lua file defining HandleRoute, absolute or relative to the Xray bin folder. The script then picks every route and Xray ignores all routing rules, the panel's api rule included: send the api inbound to the api outbound or traffic stats and live client changes stop. Xray will not start if the file is missing or invalid.",
       "routingScriptActive": "A routing script is set under {section}, so Xray ignores these rules."
+    },
+    "vpngate": {
+      "statusCapsule": "Panel status",
+      "statusUnknown": "unknown",
+      "connecting": "connecting…",
+      "connected": "connected",
+      "disconnected": "disconnected",
+      "idle": "idle",
+      "unknownCountry": "unknown exit",
+      "toLight": "Switch to light mode",
+      "toDark": "Switch to dark mode",
+      "xrayStatusHint": "Xray core state — open Overview",
+      "exitHint": "Live VPNGate exit — open the VPNGate page",
+      "unavailableTitle": "VPNGate engine is not available on this host",
+      "unavailableHint": "Install python3 and openvpn, or set LXGATE_VPNGATE_ENABLED=0 to hide this page.",
+      "engineErrorTitle": "The engine did not answer its health probe",
+      "tiles": {
+        "engine": "Engine",
+        "exit": "Exit",
+        "proxy": "Local proxy",
+        "xray": "Xray outbound",
+        "nodes": "{count} nodes cached",
+        "restarts": "{count} restarts"
+      },
+      "routingTitle": "Routing",
+      "mode": "Mode",
+      "country": "Country",
+      "countryPlaceholder": "Pick a country",
+      "ipType": "Exit IP type",
+      "favFallback": "Fall back when favourites fail",
+      "applyRouting": "Apply routing",
+      "routingHint": "Switching modes or nodes keeps the local proxy port, so Xray outbounds pointing at vpngate-out never need a restart.",
+      "modes": {
+        "auto": "Auto",
+        "fixed_region": "Country",
+        "fixed_ip": "Fixed node",
+        "favorites": "Favourites"
+      },
+      "ipTypes": {
+        "all": "Any",
+        "residential": "Residential",
+        "hosting": "Hosting"
+      },
+      "refreshNodes": "Refresh nodes",
+      "refreshHint": "Fetch and speed-test fresh VPNGate candidates",
+      "fullCheck": "Full check",
+      "disconnect": "Disconnect",
+      "disconnectHint": "Tear the tunnel down and stop auto-reconnect",
+      "nodesTitle": "Exit nodes",
+      "nodesLoading": "Fetching and speed-testing eligible nodes…",
+      "nodesEmpty": "No nodes yet. Run \"Refresh nodes\" to fetch candidates.",
+      "filterPlaceholder": "Filter nodes",
+      "testSelected": "Test {count}",
+      "logsTitle": "Live log",
+      "logsEmpty": "No log entries for today yet.",
+      "xrayBindTitle": "Xray outbound",
+      "xrayBindHint": "Registers a socks outbound named vpngate-out pointing at the local proxy. Add routing rules against that tag to send selected traffic through VPNGate.",
+      "bindOutbound": "Register vpngate-out",
+      "rebindOutbound": "Rebind vpngate-out",
+      "unbindOutbound": "Remove outbound",
+      "notBound": "not bound",
+      "columns": {
+        "country": "Country",
+        "host": "Host",
+        "latency": "Latency",
+        "score": "Score",
+        "sessions": "Sessions",
+        "active": "active"
+      },
+      "connect": "Connect",
+      "toasts": {
+        "actionDone": "Done",
+        "disconnected": "Tunnel disconnected"
+      }
+    },
+    "system": {
+      "updateAvailable": "Update available",
+      "updateAvailableHint": "LxGate v{version} is available",
+      "upToDate": "Up to date",
+      "channel": "channel: {channel}",
+      "latest": "latest v{version}",
+      "checkAgain": "Check again",
+      "updateNow": "Update now",
+      "showCommand": "How to update",
+      "checkFailed": "Could not check GitHub releases",
+      "dockerHint": "This panel runs in Docker. Pull the new image on the host to update.",
+      "updateRunning": "Update in progress",
+      "changelogTitle": "Changelog",
+      "noChangelog": "No release notes available yet.",
+      "viewRelease": "View release",
+      "infoTitle": "Installation",
+      "preserveHint": "Updating replaces the program only: the panel database and vpngate_data are preserved.",
+      "checkedAt": "Checked {time}",
+      "noUpdateHint": "You are running the newest release.",
+      "fields": {
+        "version": "Version",
+        "repo": "Repository",
+        "commit": "Build commit",
+        "buildDate": "Build date",
+        "dbPath": "Panel database",
+        "vpngateData": "VPNGate data",
+        "mode": "Deployment",
+        "native": "Native service",
+        "updateCommand": "Update command",
+        "none": "none"
+      },
+      "toasts": {
+        "updateStarted": "Update started"
+      }
     }
   },
   "tgbot": {
@@ -2581,7 +2692,7 @@
       "report": "🕰 Scheduled Reports: {{ .RunTime }}\r\n",
       "datetime": "⏰ Date&Time: {{ .DateTime }}\r\n",
       "hostname": "💻 Host: {{ .Hostname }}\r\n",
-      "version": "🚀 Lx-ui Version: {{ .Version }}\r\n",
+      "version": "🚀 LxGate Version: {{ .Version }}\r\n",
       "xrayVersion": "📡 Xray Version: {{ .XrayVersion }}\r\n",
       "ipv6": "🌐 IPv6: {{ .IPv6 }}\r\n",
       "ipv4": "🌐 IPv4: {{ .IPv4 }}\r\n",
@@ -2788,10 +2899,10 @@
   },
   "discord": {
     "test": {
-      "title": "lx-ui Discord Notification Test",
+      "title": "lxgate Discord Notification Test",
       "body": "This is a test notification confirming that Discord notifications are configured correctly."
     },
-    "footer": "lx-ui Panel",
+    "footer": "lxgate Panel",
     "fields": {
       "panelVersion": "Panel Version",
       "xrayCore": "Xray Core",
@@ -2826,13 +2937,13 @@
       "loginFailed": "Login Failed"
     },
     "report": {
-      "title": "📊 lx-ui Status Report",
+      "title": "📊 lxgate Status Report",
       "summary": "Periodic server and proxy status report for **{{ .Host }}**",
-      "footer": "lx-ui Scheduled Report • Schedule: {{ .RunTime }}"
+      "footer": "lxgate Scheduled Report • Schedule: {{ .RunTime }}"
     },
     "commands": {
-      "helpTitle": "🤖 lx-ui Discord Bot Commands",
-      "helpDescription": "Available commands for monitoring and managing the lx-ui server:",
+      "helpTitle": "🤖 lxgate Discord Bot Commands",
+      "helpDescription": "Available commands for monitoring and managing the lxgate server:",
       "helpStatus": "Display system load, RAM, CPU, connections, and online users",
       "helpReport": "Generate a full status report (with DB backup if configured)",
       "helpBackup": "Send the database backup file immediately",
@@ -2840,10 +2951,10 @@
       "helpInbounds": "List all configured inbounds with ports and client stats",
       "helpRestart": "Restart the Xray core",
       "helpHelp": "Display this list of available commands",
-      "statusTitle": "⚡ lx-ui Server Status",
+      "statusTitle": "⚡ lxgate Server Status",
       "statusDescription": "Current operational metrics for **{{ .Host }}**",
       "backupTitle": "🗄️ Database Backup",
-      "backupDescription": "Backup archive for lx-ui generated at `{{ .Time }}`",
+      "backupDescription": "Backup archive for lxgate generated at `{{ .Time }}`",
       "backupUnavailable": "❌ Backup service unavailable",
       "backupFailed": "❌ Failed to read database backup: {{ .Error }}",
       "usageHint": "⚠️ Usage: `!usage <email>` or `/usage <email>`",

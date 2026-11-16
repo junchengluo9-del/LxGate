@@ -17,7 +17,7 @@ import (
 
 func setupTestDB(t *testing.T) service.SettingService {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "lx-ui.db")
+	dbPath := filepath.Join(t.TempDir(), "lxgate.db")
 	dbtest.InitDB(t, dbPath)
 	return service.SettingService{}
 }
@@ -329,7 +329,7 @@ func TestSendMessageWithFiles_Success(t *testing.T) {
 		Embeds:  []Embed{{Title: "Report Embed"}},
 	}
 	files := []FileAttachment{
-		{Filename: "lx-ui.db", Data: []byte("sqlite-db-binary")},
+		{Filename: "lxgate.db", Data: []byte("sqlite-db-binary")},
 		{Filename: "config.json", Data: []byte(`{"log":{}}`)},
 	}
 
@@ -343,8 +343,8 @@ func TestSendMessageWithFiles_Success(t *testing.T) {
 	if receivedPayload.Content != "Report message" || len(receivedPayload.Embeds) != 1 {
 		t.Errorf("payload mismatch: %+v", receivedPayload)
 	}
-	if string(receivedFiles["lx-ui.db"]) != "sqlite-db-binary" {
-		t.Errorf("lx-ui.db mismatch: %s", string(receivedFiles["lx-ui.db"]))
+	if string(receivedFiles["lxgate.db"]) != "sqlite-db-binary" {
+		t.Errorf("lxgate.db mismatch: %s", string(receivedFiles["lxgate.db"]))
 	}
 	if string(receivedFiles["config.json"]) != `{"log":{}}` {
 		t.Errorf("config.json mismatch: %s", string(receivedFiles["config.json"]))

@@ -1,4 +1,4 @@
-// Package logger provides logging functionality for the lx-ui panel with
+// Package logger provides logging functionality for the lxgate panel with
 // dual-backend logging (console/syslog and file) and buffered log storage for web UI.
 package logger
 
@@ -19,7 +19,7 @@ import (
 
 const (
 	maxLogBufferSize = 10240                 // Maximum log entries kept in memory
-	logFileName      = "lxui.log"            // Log file name
+	logFileName      = "lxgate.log"            // Log file name
 	timeFormat       = "2006/01/02 15:04:05" // Log timestamp format
 
 	// On-disk rotation limits — single file capped, old segments pruned automatically.
@@ -51,25 +51,25 @@ var (
 // A usable default so logging never nil-derefs before InitLogger runs — the
 // "migrate" and "setting" CLI subcommands log without calling it.
 func init() {
-	logger.Store(logging.MustGetLogger("lx-ui"))
+	logger.Store(logging.MustGetLogger("lxgate"))
 }
 
 // InitLogger initializes dual logging backends: console/syslog and file.
 // Console logging uses the specified level, file logging always uses DEBUG level.
 func InitLogger(level logging.Level) {
-	newLogger := logging.MustGetLogger("lx-ui")
+	newLogger := logging.MustGetLogger("lxgate")
 	backends := make([]logging.Backend, 0, 2)
 
 	// Console/syslog backend with configurable level
 	consoleBackend := initDefaultBackend()
 	leveledBackend := logging.AddModuleLevel(consoleBackend)
-	leveledBackend.SetLevel(level, "lx-ui")
+	leveledBackend.SetLevel(level, "lxgate")
 	backends = append(backends, leveledBackend)
 
 	// File backend with DEBUG level for comprehensive logging
 	if fileBackend := initFileBackend(); fileBackend != nil {
 		leveledBackend := logging.AddModuleLevel(fileBackend)
-		leveledBackend.SetLevel(logging.DEBUG, "lx-ui")
+		leveledBackend.SetLevel(logging.DEBUG, "lxgate")
 		backends = append(backends, leveledBackend)
 	}
 

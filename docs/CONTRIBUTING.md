@@ -1,6 +1,6 @@
-# Contributing to lx-ui-docs
+# Contributing to lxgate-docs
 
-Thanks for helping improve the lx-ui documentation and product site!
+Thanks for helping improve the lxgate documentation and product site!
 
 ## Prerequisites
 

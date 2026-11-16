@@ -23,7 +23,7 @@ func TestWarpIntervalReportsClockPersistenceFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	dbDir := t.TempDir()
 	t.Setenv("XUI_DB_FOLDER", dbDir)
-	dbtest.InitDB(t, filepath.Join(dbDir, "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(dbDir, "lxgate.db"))
 	db := database.GetDB()
 	for _, setting := range []*model.Setting{
 		{Key: "warpUpdateInterval", Value: "0"},
@@ -73,7 +73,7 @@ func TestWarpIntervalReportsClockPersistenceFailure(t *testing.T) {
 // must schedule a reload like the sibling handlers do.
 func TestUpdateOutboundSubSchedulesXrayReload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lxgate.db"))
 	sub := &model.OutboundSubscription{Url: "https://provider.example/sub", TagPrefix: "p-", Enabled: true}
 	if err := database.GetDB().Create(sub).Error; err != nil {
 		t.Fatalf("seed subscription: %v", err)

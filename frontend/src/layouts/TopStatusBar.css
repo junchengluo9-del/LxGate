@@ -1,0 +1,116 @@
+/* The top status capsule: one frosted rail that carries Xray, the VPNGate exit,
+   the update badge and the theme toggle on every page. */
+
+.lg-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 24px 0;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--lg-border, rgba(255, 255, 255, 0.08));
+  border-radius: 999px;
+  background: var(--lg-chrome, rgba(18, 21, 30, 0.72));
+  backdrop-filter: var(--lg-blur, blur(18px) saturate(160%));
+  -webkit-backdrop-filter: var(--lg-blur, blur(18px) saturate(160%));
+  box-shadow: var(--lg-shadow, 0 10px 30px rgba(0, 0, 0, 0.35)), var(--lg-highlight, none);
+  position: sticky;
+  top: 12px;
+  z-index: 20;
+}
+
+.lg-topbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.lg-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--lg-border, rgba(255, 255, 255, 0.08));
+  border-radius: 999px;
+  background: var(--lg-surface-strong, rgba(22, 26, 36, 0.92));
+  color: var(--lg-text, #e8ecf6);
+  font-size: 0.78rem;
+  font-weight: 550;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.lg-capsule:hover {
+  transform: translateY(-1px);
+  border-color: var(--lg-border-strong, rgba(255, 255, 255, 0.16));
+}
+
+.lg-capsule:focus-visible {
+  outline: 2px solid var(--lg-accent, #4c8dff);
+  outline-offset: 2px;
+}
+
+.lg-capsule-label {
+  color: var(--lg-text-dim, rgba(232, 236, 246, 0.62));
+  font-weight: 500;
+}
+
+.lg-capsule-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 22ch;
+}
+
+.lg-capsule.ok .lg-dot {
+  color: var(--lg-ok, #4ade80);
+}
+
+.lg-capsule.warn .lg-dot {
+  color: var(--lg-warn, #fbbf24);
+}
+
+.lg-capsule.bad .lg-dot {
+  color: var(--lg-bad, #f87171);
+}
+
+.lg-capsule.accent {
+  color: var(--lg-accent, #4c8dff);
+  border-color: color-mix(in srgb, var(--lg-accent, #4c8dff) 40%, transparent);
+  background: color-mix(in srgb, var(--lg-accent, #4c8dff) 14%, var(--lg-surface-strong, #161a24));
+}
+
+.lg-topbar-icon {
+  border-radius: 999px !important;
+  color: var(--lg-text-dim, rgba(232, 236, 246, 0.62));
+}
+
+.lg-topbar-icon:hover {
+  color: var(--lg-text, #e8ecf6) !important;
+  background: var(--lg-accent-soft, rgba(76, 141, 255, 0.16)) !important;
+}
+
+@media (max-width: 768px) {
+  .lg-topbar {
+    margin: 12px 12px 0;
+    position: static;
+    border-radius: 16px;
+    padding: 8px;
+  }
+
+  .lg-capsule-label {
+    display: none;
+  }
+
+  .lg-capsule-value {
+    max-width: 14ch;
+  }
+}

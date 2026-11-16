@@ -1,6 +1,6 @@
 ---
 title: Резервное копирование и восстановление
-description: Создавайте резервные копии базы данных и сертификатов lx-ui и восстанавливайте их вручную или через Telegram-бота.
+description: Создавайте резервные копии базы данных и сертификатов lxgate и восстанавливайте их вручную или через Telegram-бота.
 icon: DatabaseBackup
 ---
 
@@ -10,7 +10,7 @@ icon: DatabaseBackup
 
 ## Что копировать
 
-- **База данных** — по умолчанию SQLite в `/etc/lx-ui/lx-ui.db` (или ваша база
+- **База данных** — по умолчанию SQLite в `/etc/lxgate/lxgate.db` (или ваша база
   данных PostgreSQL, если вы используете этот бэкенд).
 - **Сертификаты** — всё, что находится в `/root/cert/` (или там, где вы храните
   сертификаты TLS).
@@ -21,7 +21,7 @@ icon: DatabaseBackup
 файл базы данных напрямую с сервера:
 
 ```bash title="copy the SQLite database"
-cp /etc/lx-ui/lx-ui.db /root/lx-ui-backup-$(date +%F).db
+cp /etc/lxgate/lxgate.db /root/lxgate-backup-$(date +%F).db
 ```
 
 Чтобы выполнить восстановление, остановите панель, верните базу данных на место и
@@ -39,12 +39,12 @@ cp /etc/lx-ui/lx-ui.db /root/lx-ui-backup-$(date +%F).db
 
 ## Дамп / восстановление SQLite
 
-Команда `lx-ui migrate-db` преобразует базу данных SQLite в обычный текстовый дамп
+Команда `lxgate migrate-db` преобразует базу данных SQLite в обычный текстовый дамп
 SQL и обратно (удобно для просмотра или переноса между машинами):
 
 ```bash
-lx-ui migrate-db --dump /root/lx-ui.sql       # SQLite -> SQL text
-lx-ui migrate-db --restore /root/lx-ui.sql     # SQL text -> SQLite
+lxgate migrate-db --dump /root/lxgate.sql       # SQLite -> SQL text
+lxgate migrate-db --restore /root/lxgate.sql     # SQL text -> SQLite
 ```
 
 Чтобы перейти на PostgreSQL, смотрите раздел [База данных](/docs/reference/database).

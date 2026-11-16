@@ -1,32 +1,32 @@
-export const appName = 'lx-ui';
+export const appName = 'lxgate';
 export const appTagline = 'Advanced web panel for managing Xray-core servers';
 
 export const docsRoute = '/docs';
 export const docsImageRoute = '/og/docs';
 export const docsContentRoute = '/llms.mdx/docs';
 
-// The lx-ui product repository — used for the navbar GitHub link,
+// The lxgate product repository — used for the navbar GitHub link,
 // build-time star/release stats, and install commands.
 export const productRepo = {
   user: 'MHSanaei',
-  repo: 'lx-ui',
+  repo: 'lxgate',
   branch: 'main',
 };
 
-// Where these docs live in the lx-ui monorepo — used for "Edit on GitHub" links.
+// Where these docs live in the lxgate monorepo — used for "Edit on GitHub" links.
 export const gitConfig = {
   user: 'MHSanaei',
-  repo: 'lx-ui',
+  repo: 'lxgate',
   branch: 'main',
   docsDir: 'docs/content/docs',
 };
 
 export const productRepoUrl = `https://github.com/${productRepo.user}/${productRepo.repo}`;
 
-// AI-generated interactive wiki of the lx-ui codebase.
+// AI-generated interactive wiki of the lxgate codebase.
 export const deepWikiUrl = `https://deepwiki.com/${productRepo.user}/${productRepo.repo}`;
 
-// Official lx-ui community channel on Telegram (announcements & support).
+// Official lxgate community channel on Telegram (announcements & support).
 export const telegramChannel = 'XrayUI';
 export const telegramChannelUrl = `https://t.me/${telegramChannel}`;
 

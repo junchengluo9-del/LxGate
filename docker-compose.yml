@@ -1,26 +1,34 @@
 services:
-  lxui:
+  lxgate:
     build:
       context: .
       dockerfile: ./Dockerfile
-    container_name: lxui_app
+    container_name: lxgate_app
     # hostname: yourhostname <- optional
-    # Optional hard memory cap. When set, the panel derives its Go soft limit
-    # (GOMEMLIMIT, ~90% of this cap) so it GCs before the OOM killer fires.
-    # mem_limit: 512m
-    # The bundled Fail2ban (XUI_ENABLE_FAIL2BAN below) enforces the IP limit
-    # with iptables, which needs NET_ADMIN. Without these caps a ban is logged
-    # and shown in fail2ban status but never actually applied. NET_RAW covers
-    # ip6tables. If you disable Fail2ban, you can drop cap_add.
-    #
-    # AmneziaWG works in this image: it runs embedded in the panel process
-    # (amneziawg-go over a gVisor userspace netstack), so it needs no kernel
-    # module and no host tooling. Publish its UDP listen port to use it.
+
+    # ---------------------------------------------------------------- LxGate
+    # LxGate embeds a VPNGate exit engine: a Python sidecar that brings up an
+    # OpenVPN tunnel on tun0 and exposes a loopback SOCKS5/HTTP proxy that Xray
+    # can route through. That needs two host capabilities and the tun device:
+    #   NET_ADMIN  create/configure tun0 and the policy routes
+    #   NET_RAW    ip6tables for the same rules on IPv6
+    #   /dev/net/tun  the tunnel interface itself
+    # Without them the panel runs normally and the VPNGate page reports the
+    # engine as unavailable, so this stays safe on hosts without tun.
     cap_add:
       - NET_ADMIN
       - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    # Optional hard memory cap. When set, the panel derives its Go soft limit
+    # (GOMEMLIMIT, ~90% of this cap) so it GCs before the OOM killer fires.
+    # mem_limit: 512m
     volumes:
-      - $PWD/db/:/etc/lx-ui/
+      # Panel database and settings.
+      - $PWD/db/:/etc/lxgate/
+      # VPNGate engine state: node cache, tunnel configs, structured logs. Keep
+      # it on a volume so a recreate does not force a fresh node discovery.
+      - $PWD/vpngate_data/:/opt/lxgate/vpngate_data/
       - $PWD/cert/:/root/cert/
       # Persists acme.sh state so certificate auto-renewal survives container
       # recreation (the entrypoint re-registers the renewal cron job from it).
@@ -28,6 +36,15 @@ services:
     environment:
       XRAY_VMESS_AEAD_FORCED: "false"
       XUI_ENABLE_FAIL2BAN: "true"
+      # System & Update answers with "docker compose pull && docker compose up -d"
+      # instead of claiming it can self-update inside a container.
+      LXGATE_DOCKER: "1"
+      # VPNGate engine. The internal API is loopback-only and the SOCKS5 proxy is
+      # loopback-only, so neither needs publishing: Xray reaches the proxy from
+      # inside this container.
+      LXGATE_VPNGATE_ENABLED: "1"
+      LXGATE_VPNGATE_API_PORT: "18787"
+      LOCAL_PROXY_PORT: "7928"
       # Memory tuning. The panel keeps RAM low via GOGC + periodic release; it no
       # longer sets a soft limit from total host RAM (no benefit, risks GC thrash).
       # XUI_GOGC: "75"              # lower = less RAM, slightly more CPU; GOGC env overrides
@@ -46,13 +63,16 @@ services:
       # XUI_DB_DSN: "postgres://xui:xui@postgres:5432/xui?sslmode=disable"
     tty: true
     ports:
-      # When XUI_PORT is set, publish the same container port (for example "8080:8080").
+      # Panel UI/API. When XUI_PORT is set, publish the same container port
+      # (for example "8080:8080").
       - "2053:2053"
+      # Note: the VPNGate proxy (7928) and the engine API (18787) are loopback
+      # only ON PURPOSE and must not be published — see README "Security".
     restart: unless-stopped
 
   postgres:
     image: postgres:16-alpine
-    container_name: lxui_postgres
+    container_name: lxgate_postgres
     profiles: ["postgres"]
     environment:
       POSTGRES_USER: xui

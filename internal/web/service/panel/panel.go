@@ -127,7 +127,7 @@ func (s *PanelService) RestartPanel(delay time.Duration) error {
 	return nil
 }
 
-// GetUpdateInfo checks GitHub for the latest lx-ui release. When the dev channel
+// GetUpdateInfo checks GitHub for the latest lxgate release. When the dev channel
 // is enabled on a dev build it compares commits against the rolling dev release;
 // otherwise it compares versions against the latest stable tag.
 func (s *PanelService) GetUpdateInfo() (*PanelUpdateInfo, error) {
@@ -250,15 +250,15 @@ func (s *PanelService) startUpdate(useDev bool) (int64, error) {
 	updateScript := fmt.Sprintf("set -e; trap 'rm -f %s' EXIT; %s %s", shellQuote(scriptPath), shellQuote(bash), shellQuote(scriptPath))
 	runIDEnv := "XUI_UPDATE_RUN_ID=" + strconv.FormatInt(runID, 10)
 	statusFileEnv := "XUI_UPDATE_STATUS_FILE=" + statusFile
-	// update.sh downloads from LXUI_REPO; pin it to the repo this binary uses.
-	repoEnv := "LXUI_REPO=" + config.GetReleaseRepo()
+	// update.sh downloads from LXGATE_REPO; pin it to the repo this binary uses.
+	repoEnv := "LXGATE_REPO=" + config.GetReleaseRepo()
 	// update.sh sends its curl downloads through the panel egress bridge. With socks5h the
 	// proxy resolves GitHub's hostnames, since this server's own DNS may be filtered.
 	egressEnv := "XUI_UPDATE_PROXY=" + strings.Replace((&service.SettingService{}).PanelEgressProxyURL(), "socks5://", "socks5h://", 1)
 	proxyEnv := updateProxyEnvVars()
 
 	if systemdRun, err := exec.LookPath("systemd-run"); err == nil {
-		unitName := fmt.Sprintf("lx-ui-web-update-%d", time.Now().Unix())
+		unitName := fmt.Sprintf("lxgate-web-update-%d", time.Now().Unix())
 		args := []string{
 			"--unit", unitName,
 			"--setenv", "XUI_MAIN_FOLDER=" + mainFolder,
@@ -383,9 +383,9 @@ func releaseUpdateSlot() {
 }
 
 // errReleaseRepoNotConfigured is returned while internal/config/repo still
-// holds the "<ORG>/Lx-ui" placeholder (see tools/rebrand.env). // lxui:keep
-var errReleaseRepoNotConfigured = errors.New("self-update is unavailable: the Lx-ui release repository is not configured " +
-	"(set LXUI_REPO in tools/rebrand.env and rebuild, or set the LXUI_REPO environment variable)")
+// holds the "<ORG>/LxGate" placeholder (see tools/rebrand.env). // lxgate:keep
+var errReleaseRepoNotConfigured = errors.New("self-update is unavailable: the LxGate release repository is not configured " +
+	"(set LXGATE_REPO in tools/rebrand.env and rebuild, or set the LXGATE_REPO environment variable)")
 
 // panelUpdaterURL is update.sh on the main branch of the release repository.
 func panelUpdaterURL() string {
@@ -410,7 +410,7 @@ func downloadPanelUpdater() (string, error) {
 		return "", fmt.Errorf("download panel updater: unexpected HTTP %d", resp.StatusCode)
 	}
 
-	file, err := os.CreateTemp("", "lx-ui-update-*.sh")
+	file, err := os.CreateTemp("", "lxgate-update-*.sh")
 	if err != nil {
 		return "", err
 	}
@@ -538,7 +538,7 @@ func resolveUpdateFolders() (string, string) {
 		}
 	}
 	if mainFolder == "" {
-		mainFolder = "/usr/local/lx-ui"
+		mainFolder = "/usr/local/lxgate"
 	}
 
 	serviceFolder := os.Getenv("XUI_SERVICE")

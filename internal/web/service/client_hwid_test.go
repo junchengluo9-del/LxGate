@@ -13,7 +13,7 @@ func initClientHwidTestDB(t *testing.T) {
 	t.Helper()
 	dbDir := t.TempDir()
 	t.Setenv("XUI_DB_FOLDER", dbDir)
-	dbtest.InitDB(t, filepath.Join(dbDir, "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(dbDir, "lxgate.db"))
 }
 
 func seedHwidClient(t *testing.T, limit int) *model.ClientRecord {

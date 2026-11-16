@@ -25,7 +25,7 @@ func TestImportDBSchedulesPanelRestart(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the stub xray binary is a shell script")
 	}
-	uploadPath := filepath.Join(t.TempDir(), "lx-ui.db")
+	uploadPath := filepath.Join(t.TempDir(), "lxgate.db")
 	if err := database.InitDB(uploadPath); err != nil {
 		t.Fatalf("InitDB(upload): %v", err)
 	}
@@ -56,7 +56,7 @@ func TestImportDBSchedulesPanelRestart(t *testing.T) {
 
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
-	part, err := mw.CreateFormFile("db", "lx-ui.db")
+	part, err := mw.CreateFormFile("db", "lxgate.db")
 	if err != nil {
 		t.Fatalf("CreateFormFile: %v", err)
 	}

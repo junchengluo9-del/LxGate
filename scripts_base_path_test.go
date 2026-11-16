@@ -97,8 +97,8 @@ func runScriptConfig(t *testing.T, script, path string, defaults bool, mode stri
 	}
 	for name, value := range map[string]string{
 		"path": path, "username": username, "password": password,
-		"default": fmt.Sprint(defaults), "port": "54321", "lx-ui": settingsCLIMock,
-		"writes": "", "path-writes": "", "restarts": "", "lifecycle": "", "lx-ui.service": "test unit",
+		"default": fmt.Sprint(defaults), "port": "54321", "lxgate": settingsCLIMock,
+		"writes": "", "path-writes": "", "restarts": "", "lifecycle": "", "lxgate.service": "test unit",
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o700); err != nil {
 			t.Fatal(err)
@@ -137,9 +137,9 @@ setup_fail2ban() { printf 'fail2ban\n' >> "$TEST_SETTINGS_DIR/lifecycle"; }
 		}
 	}
 	if continueSetup {
-		parent := "update_lx-ui"
+		parent := "update_lxgate"
 		if script == "install.sh" {
-			parent = "install_lx-ui"
+			parent = "install_lxgate"
 		}
 		body := scriptFunction(t, script, parent)
 		start := strings.Index(body, "\n    "+function)
@@ -214,7 +214,7 @@ func TestScriptConfigPreservesCustomBasePaths(t *testing.T) {
 					}
 					wantRestarts := ""
 					if initialize && script == "update.sh" {
-						wantRestarts = "restart lx-ui\n"
+						wantRestarts = "restart lxgate\n"
 					}
 					if actual := readScriptState(t, dir, "restarts"); actual != wantRestarts {
 						t.Errorf("path-related restarts = %q, want %q", actual, wantRestarts)
@@ -272,7 +272,7 @@ func TestScriptConfigReadFailureKeepsServiceSetup(t *testing.T) {
 			wantLifecycle, wantServices := "fail2ban\n", ""
 			if script == "install.sh" {
 				wantLifecycle = "unit\nfail2ban\n"
-				wantServices = "daemon-reload\nenable lx-ui\nstart lx-ui\n"
+				wantServices = "daemon-reload\nenable lxgate\nstart lxgate\n"
 			}
 			for name, want := range map[string]string{
 				"path": "/a/", "username": "admin", "password": "admin", "writes": "",

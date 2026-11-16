@@ -25,7 +25,7 @@ func seedLegacyDotClient(t *testing.T, email string) (*gin.Engine, model.ClientR
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("XUI_DB_FOLDER", dir)
-	dbtest.InitDB(t, filepath.Join(dir, "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(dir, "lxgate.db"))
 	db := database.GetDB()
 	rec := model.ClientRecord{Email: email, UUID: "11111111-2222-3333-4444-555555555555", SubID: "legacy-dot-sub", Enable: true}
 	if err := db.Create(&rec).Error; err != nil {

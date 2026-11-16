@@ -1,17 +1,17 @@
 #!/bin/bash
 
-# >>> lx-ui identity (managed by tools/rebrand.sh; edit tools/rebrand.env) >>>
-LXUI_REPO="${LXUI_REPO:-junchengluo9-del/Lx-ui}"
-LXUI_RAW_BASE="https://raw.githubusercontent.com/${LXUI_REPO}"
-LXUI_RELEASE_BASE="https://github.com/${LXUI_REPO}/releases"
-# LXUI_* variables are canonical; the legacy XUI_* names keep working as aliases.
-# An LXUI_ value wins over the XUI_ alias of the same name.
-while IFS='=' read -r __lxui_k __lxui_v; do
-    case "$__lxui_k" in LXUI_REPO | LXUI_RAW_BASE | LXUI_RELEASE_BASE) continue ;; esac
-    export "XUI_${__lxui_k#LXUI_}=${__lxui_v}"
-done < <(env | grep -E '^LXUI_[A-Z0-9_]+=' || true)
-unset __lxui_k __lxui_v
-# <<< lx-ui identity <<<
+# >>> lxgate identity (managed by tools/rebrand.sh; edit tools/rebrand.env) >>>
+LXGATE_REPO="${LXGATE_REPO:-junchengluo9-del/LxGate}"
+LXGATE_RAW_BASE="https://raw.githubusercontent.com/${LXGATE_REPO}"
+LXGATE_RELEASE_BASE="https://github.com/${LXGATE_REPO}/releases"
+# LXGATE_* variables are canonical; the legacy XUI_* names keep working as aliases.
+# An LXGATE_ value wins over the XUI_ alias of the same name.
+while IFS='=' read -r __lxgate_k __lxgate_v; do
+    case "$__lxgate_k" in LXGATE_REPO | LXGATE_RAW_BASE | LXGATE_RELEASE_BASE) continue ;; esac
+    export "XUI_${__lxgate_k#LXGATE_}=${__lxgate_v}"
+done < <(env | grep -E '^LXGATE_[A-Z0-9_]+=' || true)
+unset __lxgate_k __lxgate_v
+# <<< lxgate identity <<<
 
 red='\033[0;31m'
 green='\033[0;32m'
@@ -19,7 +19,7 @@ blue='\033[0;34m'
 yellow='\033[0;33m'
 plain='\033[0m'
 
-xui_folder="${XUI_MAIN_FOLDER:=/usr/local/lx-ui}"
+xui_folder="${XUI_MAIN_FOLDER:=/usr/local/lxgate}"
 xui_service="${XUI_SERVICE:=/etc/systemd/system}"
 
 # Don't edit this config
@@ -52,7 +52,7 @@ _fail() {
 # calls that don't go through _fail.
 xui_update_run_id="${XUI_UPDATE_RUN_ID:-0}"
 [[ "${xui_update_run_id}" =~ ^[0-9]+$ ]] || xui_update_run_id="0"
-xui_update_status_file="${XUI_UPDATE_STATUS_FILE:-/etc/lx-ui/update-status.json}"
+xui_update_status_file="${XUI_UPDATE_STATUS_FILE:-/etc/lxgate/update-status.json}"
 
 _write_update_status() {
     local state="$1"
@@ -127,13 +127,13 @@ gen_random_string() {
 xui_env_file_path() {
     case "${release}" in
         ubuntu | debian | armbian)
-            echo "/etc/default/lx-ui"
+            echo "/etc/default/lxgate"
             ;;
         arch | manjaro | parch | alpine)
-            echo "/etc/conf.d/lx-ui"
+            echo "/etc/conf.d/lxgate"
             ;;
         *)
-            echo "/etc/sysconfig/lx-ui"
+            echo "/etc/sysconfig/lxgate"
             ;;
     esac
 }
@@ -183,14 +183,14 @@ install_base() {
 config_after_update() {
     local panel_needs_restart=0
 
-    echo -e "${yellow}lx-ui settings:${plain}"
-    ${xui_folder}/lx-ui setting -show true
-    ${xui_folder}/lx-ui migrate
+    echo -e "${yellow}lxgate settings:${plain}"
+    ${xui_folder}/lxgate setting -show true
+    ${xui_folder}/lxgate migrate
 
     # Properly detect empty cert by checking if cert: line exists and has content after it
-    local existing_cert=$(${xui_folder}/lx-ui setting -getCert true 2> /dev/null | grep 'cert:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
+    local existing_cert=$(${xui_folder}/lxgate setting -getCert true 2> /dev/null | grep 'cert:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
     local settings existing_webBasePath
-    if ! settings=$("${xui_folder}/lx-ui" setting -show true) ||
+    if ! settings=$("${xui_folder}/lxgate" setting -show true) ||
         ! existing_webBasePath=$(printf '%s\n' "$settings" | awk '
             /^get .* failed, error info:/ { failed = 1 }
             /^hasDefaultCredential: (true|false)$/ { credentials++ }
@@ -236,14 +236,14 @@ config_after_update() {
     if [[ -z "$existing_webBasePath" ]]; then
         echo -e "${yellow}WebBasePath is missing or set to root. Generating a new one...${plain}"
         local config_webBasePath=$(gen_random_string 18)
-        ${xui_folder}/lx-ui setting -webBasePath "${config_webBasePath}"
+        ${xui_folder}/lxgate setting -webBasePath "${config_webBasePath}"
         existing_webBasePath="${config_webBasePath}"
         panel_needs_restart=1
         echo -e "${green}New WebBasePath: ${config_webBasePath}${plain}"
     fi
 
     # An update only updates the panel: TLS stays exactly as configured. Set it up
-    # explicitly from the lx-ui menu (SSL Certificate Management).
+    # explicitly from the lxgate menu (SSL Certificate Management).
     local access_scheme="http" access_host="${server_ip}"
     if [[ -n "$existing_cert" ]]; then
         access_scheme="https"
@@ -257,17 +257,17 @@ config_after_update() {
     echo -e "${green}═══════════════════════════════════════════${plain}"
     if [[ -z "$existing_cert" ]]; then
         echo -e "${yellow}No SSL certificate is configured; the panel is served over HTTP.${plain}"
-        echo -e "${yellow}Run 'lx-ui' and choose SSL Certificate Management to set one up.${plain}"
+        echo -e "${yellow}Run 'lxgate' and choose SSL Certificate Management to set one up.${plain}"
     fi
 
     if [[ "$panel_needs_restart" -eq 1 ]]; then
         echo -e "${yellow}Restarting panel to apply the new web base path...${plain}"
-        systemctl restart lx-ui 2> /dev/null || rc-service lx-ui restart 2> /dev/null
+        systemctl restart lxgate 2> /dev/null || rc-service lxgate restart 2> /dev/null
     fi
 }
 
 # setup_fail2ban auto-installs and configures fail2ban for the IP Limit feature
-# by invoking the freshly downloaded lx-ui CLI. IP Limit is load-bearing on
+# by invoking the freshly downloaded lxgate CLI. IP Limit is load-bearing on
 # fail2ban (without it the panel disables the limitIp field and zeroes existing
 # limits), so updating an older install should make it work without a manual
 # trip through the IP Limit menu. Non-fatal: a fail2ban failure must never abort
@@ -279,23 +279,23 @@ setup_fail2ban() {
         return 0
     fi
 
-    if [[ ! -x /usr/bin/lx-ui ]]; then
-        echo -e "${yellow}lx-ui CLI not found; skipping Fail2ban auto-setup.${plain}"
+    if [[ ! -x /usr/bin/lxgate ]]; then
+        echo -e "${yellow}lxgate CLI not found; skipping Fail2ban auto-setup.${plain}"
         return 0
     fi
 
     # Scripts older than v3.4.0 have no setup-fail2ban and exit 0 from the
     # usage banner, which would read as success here.
-    if ! grep -q '"setup-fail2ban")' /usr/bin/lx-ui; then
-        echo -e "${yellow}This lx-ui.sh predates 'lx-ui setup-fail2ban'; skipping Fail2ban auto-setup.${plain}"
+    if ! grep -q '"setup-fail2ban")' /usr/bin/lxgate; then
+        echo -e "${yellow}This lxgate.sh predates 'lxgate setup-fail2ban'; skipping Fail2ban auto-setup.${plain}"
         return 0
     fi
 
     echo -e "${green}Setting up Fail2ban for the IP Limit feature...${plain}"
-    if /usr/bin/lx-ui setup-fail2ban; then
+    if /usr/bin/lxgate setup-fail2ban; then
         echo -e "${green}Fail2ban setup complete.${plain}"
     else
-        echo -e "${yellow}Fail2ban setup did not finish; IP Limit stays disabled until you run 'lx-ui' and open the IP Limit menu. Continuing.${plain}"
+        echo -e "${yellow}Fail2ban setup did not finish; IP Limit stays disabled until you run 'lxgate' and open the IP Limit menu. Continuing.${plain}"
     fi
     return 0
 }
@@ -305,17 +305,17 @@ setup_fail2ban() {
 # transient systemd-run unit; when systemd-run is unavailable it starts this
 # script as a plain child instead, and that child inherits the sandbox and then
 # cannot write anything this update needs. Say so once, up front, instead of
-# dying partway through with "Failed to download lx-ui".
+# dying partway through with "Failed to download lxgate".
 require_writable_update_paths() {
     local dir probe
     for dir in "${xui_folder%/*}" "/usr/bin"; do
         [[ -n "$dir" && -d "$dir" ]] || continue
-        probe="${dir}/.lx-ui-write-test.$$"
+        probe="${dir}/.lxgate-write-test.$$"
         # A real write test rather than [[ -w ]]: this runs as root, where a
         # permission bit means little and the test only reflects the file mode
         # and the mount flags, not an immutable attribute or a full filesystem.
         if ! : > "$probe" 2> /dev/null; then
-            _fail "ERROR: ${dir} is not writable for this process (read-only mount, attribute or full filesystem). The panel's fallback updater cannot run inside the hardened systemd sandbox; update from the panel UI (which uses systemd-run) or run 'lx-ui update' in a shell."
+            _fail "ERROR: ${dir} is not writable for this process (read-only mount, attribute or full filesystem). The panel's fallback updater cannot run inside the hardened systemd sandbox; update from the panel UI (which uses systemd-run) or run 'lxgate update' in a shell."
         fi
         rm -f "$probe"
     done
@@ -357,7 +357,7 @@ _xui_warn_unsupported_hardening() {
         fi
     done
     [[ -n "$missing" ]] || return 0
-    echo -e "${yellow}Note: systemd ${version} ignores part of the hardening in lx-ui.service; the panel still starts.${plain}"
+    echo -e "${yellow}Note: systemd ${version} ignores part of the hardening in lxgate.service; the panel still starts.${plain}"
     echo "      Not applied, needs a newer systemd: ${missing}."
     if [[ "$version" -lt 231 ]]; then
         echo "      The panel's folders stay writable through ReadWriteDirectories=, the alias this script installs."
@@ -402,8 +402,8 @@ _xui_service_write_paths_dropin() {
     # file to the panel through EnvironmentFile=, so these are the folders it
     # will actually use.
     main_folder="${XUI_MAIN_FOLDER:-${xui_folder}}"
-    db_folder="${XUI_DB_FOLDER:-/etc/lx-ui}"
-    log_folder="${XUI_LOG_FOLDER:-/var/log/lx-ui}"
+    db_folder="${XUI_DB_FOLDER:-/etc/lxgate}"
+    log_folder="${XUI_LOG_FOLDER:-/var/log/lxgate}"
     # An empty XUI_BIN_FOLDER resolves to "bin" relative to the panel's working
     # directory, which the unit sets to the main folder.
     bin_folder="${XUI_BIN_FOLDER:-bin}"
@@ -439,7 +439,7 @@ _xui_service_write_paths_dropin() {
     line="${line# }"
     [[ -n "$line" ]] || return 1
 
-    dropin_dir="${xui_service}/lx-ui.service.d"
+    dropin_dir="${xui_service}/lxgate.service.d"
     dropin="${dropin_dir}/10-xui-sandbox.conf"
     temp_file="${dropin}.tmp.$$"
 
@@ -449,7 +449,7 @@ _xui_service_write_paths_dropin() {
 # are lost, and the list only reflects the XUI_* variables read from
 # ${env_file} at that moment. Re-run install/update after moving a store.
 # It lists the folders the panel writes to. Put local additions in their own
-# drop-in, for example 20-lx-ui-local.conf, which nothing here touches.
+# drop-in, for example 20-lxgate-local.conf, which nothing here touches.
 [Service]
 ReadWritePaths=${line}
 ReadWriteDirectories=${line}
@@ -457,7 +457,7 @@ EOF
     if [[ "$(_xui_systemd_major_version)" -ge 239 ]]; then
         cat >> "$temp_file" << 'EOF'
 # @system-service needs systemd >= 239; on older versions the unknown group
-# would leave the panel with a filter it cannot start under (lx-ui.service.*).
+# would leave the panel with a filter it cannot start under (lxgate.service.*).
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
 EOF
@@ -474,16 +474,16 @@ EOF
     return 0
 }
 
-# Lands a systemd unit file at ${xui_service}/lx-ui.service via a temp file +
+# Lands a systemd unit file at ${xui_service}/lxgate.service via a temp file +
 # atomic mv, so a failed cp/curl or an interrupted mv never leaves a
 # truncated unit file at the live path -- systemd would then fail to parse
 # it on the next daemon-reload/start. Same pattern already used for
-# /usr/bin/lx-ui elsewhere in this script. source_is_url picks cp (from a
+# /usr/bin/lxgate elsewhere in this script. source_is_url picks cp (from a
 # file already extracted from the release tarball) vs curl (GitHub fallback).
 _install_xui_service_unit() {
     local source="$1"
     local source_is_url="$2"
-    local dest="${xui_service}/lx-ui.service"
+    local dest="${xui_service}/lxgate.service"
     local temp_file="${dest}.tmp.$$"
 
     rm -f "$temp_file"
@@ -506,14 +506,14 @@ _install_xui_service_unit() {
         return 1
     fi
     if ! _xui_service_write_paths_dropin; then
-        echo -e "${yellow}Warning: could not refresh ${xui_service}/lx-ui.service.d/10-xui-sandbox.conf.${plain}"
-        echo -e "${yellow}If XUI_DB_FOLDER or XUI_LOG_FOLDER points outside /etc/lx-ui and /var/log/lx-ui, the panel may not be able to write to it under ProtectSystem=full.${plain}"
+        echo -e "${yellow}Warning: could not refresh ${xui_service}/lxgate.service.d/10-xui-sandbox.conf.${plain}"
+        echo -e "${yellow}If XUI_DB_FOLDER or XUI_LOG_FOLDER points outside /etc/lxgate and /var/log/lxgate, the panel may not be able to write to it under ProtectSystem=full.${plain}"
     fi
     _xui_warn_unsupported_hardening
     return 0
 }
 
-# Older tags predate some of these files (lx-ui.rc arrived in v2.8.4). Serving
+# Older tags predate some of these files (lxgate.rc arrived in v2.8.4). Serving
 # main's copy against an old binary is the mismatch this pinning exists to
 # prevent, so probe before the old install is removed and refuse the tag.
 require_repo_files() {
@@ -521,26 +521,26 @@ require_repo_files() {
     shift
     [[ "${ref}" == "main" ]] && return 0
     for name in "$@"; do
-        status=$(${curl_bin} -sIL --retry 3 --connect-timeout 15 -o /dev/null -w '%{http_code}' "${LXUI_RAW_BASE}/${ref}/${name}")
+        status=$(${curl_bin} -sIL --retry 3 --connect-timeout 15 -o /dev/null -w '%{http_code}' "${LXGATE_RAW_BASE}/${ref}/${name}")
         if [[ "${status}" != "200" ]]; then
             _fail "ERROR: ${name} is not available for ${ref} (HTTP ${status}). Update to a release that ships it, or to 'dev-latest'. The current installation is untouched."
         fi
     done
 }
 
-update_lx-ui() {
-    cd ${xui_folder%/lx-ui}/
+update_lxgate() {
+    cd ${xui_folder%/lxgate}/
 
     load_xui_env
 
-    if [ -f "${xui_folder}/lx-ui" ]; then
-        current_xui_version=$(${xui_folder}/lx-ui -v)
-        echo -e "${green}Current lx-ui version: ${current_xui_version}${plain}"
+    if [ -f "${xui_folder}/lxgate" ]; then
+        current_xui_version=$(${xui_folder}/lxgate -v)
+        echo -e "${green}Current lxgate version: ${current_xui_version}${plain}"
     else
-        _fail "ERROR: Current lx-ui version: unknown"
+        _fail "ERROR: Current lxgate version: unknown"
     fi
 
-    echo -e "${green}Downloading new lx-ui version...${plain}"
+    echo -e "${green}Downloading new lxgate version...${plain}"
 
     # XUI_UPDATE_TAG lets the panel target a specific release tag (e.g. the
     # rolling dev-latest pre-release). Empty keeps the default latest-stable flow.
@@ -548,43 +548,43 @@ update_lx-ui() {
         tag_version="${XUI_UPDATE_TAG}"
         echo -e "${green}Using update tag: ${tag_version}${plain}"
     else
-        tag_version=$(${curl_bin} -Ls "https://api.github.com/repos/${LXUI_REPO}/releases/latest" 2> /dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        tag_version=$(${curl_bin} -Ls "https://api.github.com/repos/${LXGATE_REPO}/releases/latest" 2> /dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$tag_version" ]]; then
             # No stable release yet: releases/latest ignores pre-releases, so
             # fall back to the rolling dev build when it exists.
-            dev_code=$(${curl_bin} -sIL -o /dev/null -w '%{http_code}' "${LXUI_RELEASE_BASE}/download/dev-latest/lx-ui-linux-$(arch).tar.gz" 2> /dev/null)
+            dev_code=$(${curl_bin} -sIL -o /dev/null -w '%{http_code}' "${LXGATE_RELEASE_BASE}/download/dev-latest/lxgate-linux-$(arch).tar.gz" 2> /dev/null)
             if [[ "${dev_code}" == "200" ]]; then
-                echo -e "${yellow}No stable lx-ui release found; updating to the rolling dev build (dev-latest).${plain}"
+                echo -e "${yellow}No stable lxgate release found; updating to the rolling dev build (dev-latest).${plain}"
                 tag_version="dev-latest"
             else
-                _fail "ERROR: Failed to fetch lx-ui version (no stable release and no dev-latest build, or GitHub API restrictions), please try it later"
+                _fail "ERROR: Failed to fetch lxgate version (no stable release and no dev-latest build, or GitHub API restrictions), please try it later"
             fi
         fi
     fi
-    echo -e "Got lx-ui latest version: ${tag_version}, beginning the installation..."
-    # lx-ui.rc and the unit files must come from the binary's own release; only the
-    # rolling dev build tracks main. lx-ui.sh ships in the archive and needs no GitHub check.
+    echo -e "Got lxgate latest version: ${tag_version}, beginning the installation..."
+    # lxgate.rc and the unit files must come from the binary's own release; only the
+    # rolling dev build tracks main. lxgate.sh ships in the archive and needs no GitHub check.
     script_ref="${tag_version}"
     if [[ "${tag_version}" == "dev-latest" ]]; then
         script_ref="main"
     fi
     # The unit files are only fetched when the release tarball lacks them, so
     # they are checked at that point instead of here.
-    [[ $release == "alpine" ]] && require_repo_files "${script_ref}" "lx-ui.rc"
-    ${curl_bin} -fLRo ${xui_folder}-linux-$(arch).tar.gz ${LXUI_RELEASE_BASE}/download/${tag_version}/lx-ui-linux-$(arch).tar.gz 2> /dev/null
+    [[ $release == "alpine" ]] && require_repo_files "${script_ref}" "lxgate.rc"
+    ${curl_bin} -fLRo ${xui_folder}-linux-$(arch).tar.gz ${LXGATE_RELEASE_BASE}/download/${tag_version}/lxgate-linux-$(arch).tar.gz 2> /dev/null
     if [[ $? -ne 0 ]]; then
-        _fail "ERROR: Failed to download lx-ui, please be sure that your server can access GitHub"
+        _fail "ERROR: Failed to download lxgate, please be sure that your server can access GitHub"
     fi
     if [[ ! -s ${xui_folder}-linux-$(arch).tar.gz ]]; then
         rm ${xui_folder}-linux-$(arch).tar.gz -f > /dev/null 2>&1
-        _fail "ERROR: Downloaded lx-ui release archive is empty, please be sure that your server can access GitHub"
+        _fail "ERROR: Downloaded lxgate release archive is empty, please be sure that your server can access GitHub"
     fi
     # Releases publish <asset>.sha256 next to each archive. A mismatch or a
     # failed sidecar download aborts the update; only a 404 (releases
     # predating the sidecar) is tolerated with a warning.
     archive="${xui_folder}-linux-$(arch).tar.gz"
     rm -f "${archive}.sha256"
-    sidecar_code=$(${curl_bin} -sL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 -o "${archive}.sha256" -w '%{http_code}' "${LXUI_RELEASE_BASE}/download/${tag_version}/lx-ui-linux-$(arch).tar.gz.sha256" 2> /dev/null)
+    sidecar_code=$(${curl_bin} -sL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 -o "${archive}.sha256" -w '%{http_code}' "${LXGATE_RELEASE_BASE}/download/${tag_version}/lxgate-linux-$(arch).tar.gz.sha256" 2> /dev/null)
     if [[ "${sidecar_code}" == "200" ]]; then
         expected_sha256=$(awk 'NR == 1 {print $1}' "${archive}.sha256")
         actual_sha256=$(sha256sum "${archive}" | awk '{print $1}')
@@ -599,64 +599,64 @@ update_lx-ui() {
         echo -e "${yellow}No checksum published for this release, skipping verification${plain}"
     else
         rm -f "${archive}.sha256" "${archive}"
-        _fail "ERROR: Failed to download the checksum for lx-ui-linux-$(arch).tar.gz (HTTP ${sidecar_code})"
+        _fail "ERROR: Failed to download the checksum for lxgate-linux-$(arch).tar.gz (HTTP ${sidecar_code})"
     fi
 
-    # Download everything before lx-ui stops, because its Xray and any panel egress bridge
+    # Download everything before lxgate stops, because its Xray and any panel egress bridge
     # stop with it. Alpine's init script is the only file the archive lacks.
     if [[ $release == "alpine" ]]; then
-        echo -e "${green}Downloading startup unit lx-ui.rc...${plain}"
-        xui_rc_temp="/etc/init.d/lx-ui.tmp.$$"
+        echo -e "${green}Downloading startup unit lxgate.rc...${plain}"
+        xui_rc_temp="/etc/init.d/lxgate.tmp.$$"
         rm -f "${xui_rc_temp}"
-        ${curl_bin} -fLRo "${xui_rc_temp}" "${LXUI_RAW_BASE}/${script_ref}/lx-ui.rc" > /dev/null 2>&1
+        ${curl_bin} -fLRo "${xui_rc_temp}" "${LXGATE_RAW_BASE}/${script_ref}/lxgate.rc" > /dev/null 2>&1
         if [[ $? -ne 0 ]]; then
             rm -f "${xui_rc_temp}" "${archive}"
-            _fail "ERROR: Failed to download startup unit lx-ui.rc, please be sure that your server can access GitHub"
+            _fail "ERROR: Failed to download startup unit lxgate.rc, please be sure that your server can access GitHub"
         fi
         if [[ ! -s "${xui_rc_temp}" ]]; then
             rm -f "${xui_rc_temp}" "${archive}"
-            _fail "ERROR: Downloaded startup unit lx-ui.rc is empty, please be sure that your server can access GitHub"
+            _fail "ERROR: Downloaded startup unit lxgate.rc is empty, please be sure that your server can access GitHub"
         fi
     fi
 
     if [[ -e ${xui_folder}/ ]]; then
-        echo -e "${green}Stopping lx-ui...${plain}"
+        echo -e "${green}Stopping lxgate...${plain}"
         if [[ $release == "alpine" ]]; then
-            if [ -f "/etc/init.d/lx-ui" ]; then
-                rc-service lx-ui stop > /dev/null 2>&1
-                rc-update del lx-ui > /dev/null 2>&1
+            if [ -f "/etc/init.d/lxgate" ]; then
+                rc-service lxgate stop > /dev/null 2>&1
+                rc-update del lxgate > /dev/null 2>&1
                 echo -e "${green}Removing old service unit version...${plain}"
-                rm -f /etc/init.d/lx-ui > /dev/null 2>&1
+                rm -f /etc/init.d/lxgate > /dev/null 2>&1
             else
-                rm lx-ui-linux-$(arch).tar.gz -f > /dev/null 2>&1
-                _fail "ERROR: lx-ui service unit not installed."
+                rm lxgate-linux-$(arch).tar.gz -f > /dev/null 2>&1
+                _fail "ERROR: lxgate service unit not installed."
             fi
         else
-            if [ -f "${xui_service}/lx-ui.service" ]; then
-                systemctl stop lx-ui > /dev/null 2>&1
-                systemctl disable lx-ui > /dev/null 2>&1
+            if [ -f "${xui_service}/lxgate.service" ]; then
+                systemctl stop lxgate > /dev/null 2>&1
+                systemctl disable lxgate > /dev/null 2>&1
                 echo -e "${green}Removing old systemd unit version...${plain}"
-                rm ${xui_service}/lx-ui.service -f > /dev/null 2>&1
+                rm ${xui_service}/lxgate.service -f > /dev/null 2>&1
                 systemctl daemon-reload > /dev/null 2>&1
             else
-                rm lx-ui-linux-$(arch).tar.gz -f > /dev/null 2>&1
-                _fail "ERROR: lx-ui systemd unit not installed."
+                rm lxgate-linux-$(arch).tar.gz -f > /dev/null 2>&1
+                _fail "ERROR: lxgate systemd unit not installed."
             fi
         fi
-        # Kill any leftover mtg (MTProto) sidecars. lx-ui runs them outside its own
+        # Kill any leftover mtg (MTProto) sidecars. lxgate runs them outside its own
         # lifecycle, so on Linux a stale one can survive the stop and keep holding
         # an inbound port with an outdated secret, silently breaking new clients.
         # The new panel respawns a clean mtg per inbound on next start.
         pkill -f 'mtg-linux-[^ ]* run ' > /dev/null 2>&1 || true
         pkill -f 'tuic-server.*-c .*bin/tuic/tuic_[0-9]+\.json' > /dev/null 2>&1 || true
-        echo -e "${green}Removing old lx-ui version...${plain}"
+        echo -e "${green}Removing old lxgate version...${plain}"
         rm ${xui_folder} -f > /dev/null 2>&1
-        rm ${xui_folder}/lx-ui.service -f > /dev/null 2>&1
-        rm ${xui_folder}/lx-ui.service.debian -f > /dev/null 2>&1
-        rm ${xui_folder}/lx-ui.service.arch -f > /dev/null 2>&1
-        rm ${xui_folder}/lx-ui.service.rhel -f > /dev/null 2>&1
-        rm ${xui_folder}/lx-ui -f > /dev/null 2>&1
-        rm ${xui_folder}/lx-ui.sh -f > /dev/null 2>&1
+        rm ${xui_folder}/lxgate.service -f > /dev/null 2>&1
+        rm ${xui_folder}/lxgate.service.debian -f > /dev/null 2>&1
+        rm ${xui_folder}/lxgate.service.arch -f > /dev/null 2>&1
+        rm ${xui_folder}/lxgate.service.rhel -f > /dev/null 2>&1
+        rm ${xui_folder}/lxgate -f > /dev/null 2>&1
+        rm ${xui_folder}/lxgate.sh -f > /dev/null 2>&1
         echo -e "${green}Removing old mtg version...${plain}"
         rm ${xui_folder}/bin/mtg-linux-$(arch) -f > /dev/null 2>&1
         # By default the update keeps the Xray core the operator picked in the
@@ -686,22 +686,22 @@ update_lx-ui() {
         rm ${xui_folder}/bin/tuic-server -f > /dev/null 2>&1
         rm ${xui_folder}/bin/tuic -rf > /dev/null 2>&1
     else
-        rm lx-ui-linux-$(arch).tar.gz -f > /dev/null 2>&1
-        _fail "ERROR: lx-ui not installed."
+        rm lxgate-linux-$(arch).tar.gz -f > /dev/null 2>&1
+        _fail "ERROR: lxgate not installed."
     fi
 
-    echo -e "${green}Installing new lx-ui version...${plain}"
-    tar zxvf lx-ui-linux-$(arch).tar.gz > /dev/null 2>&1
+    echo -e "${green}Installing new lxgate version...${plain}"
+    tar zxvf lxgate-linux-$(arch).tar.gz > /dev/null 2>&1
     if [[ $? -ne 0 ]]; then
-        rm lx-ui-linux-$(arch).tar.gz -f > /dev/null 2>&1
-        _fail "ERROR: Failed to extract the lx-ui release archive -- the previous installation has already been removed, so the panel will not start until this is fixed; try running the update again"
+        rm lxgate-linux-$(arch).tar.gz -f > /dev/null 2>&1
+        _fail "ERROR: Failed to extract the lxgate release archive -- the previous installation has already been removed, so the panel will not start until this is fixed; try running the update again"
     fi
-    rm lx-ui-linux-$(arch).tar.gz -f > /dev/null 2>&1
-    cd lx-ui > /dev/null 2>&1
-    if [[ $? -ne 0 || ! -s lx-ui ]]; then
-        _fail "ERROR: Extracted lx-ui archive is missing the lx-ui binary -- the previous installation has already been removed, so the panel will not start until this is fixed; try running the update again"
+    rm lxgate-linux-$(arch).tar.gz -f > /dev/null 2>&1
+    cd lxgate > /dev/null 2>&1
+    if [[ $? -ne 0 || ! -s lxgate ]]; then
+        _fail "ERROR: Extracted lxgate archive is missing the lxgate binary -- the previous installation has already been removed, so the panel will not start until this is fixed; try running the update again"
     fi
-    chmod +x lx-ui > /dev/null 2>&1
+    chmod +x lxgate > /dev/null 2>&1
 
     # Check the system's architecture and rename the file accordingly.
     # The panel binary maps GOARCH=arm to "arm32" (internal/xray/process.go),
@@ -719,24 +719,24 @@ update_lx-ui() {
         cp -f "$kept_xray" "bin/${kept_xray_name}" && rm -f "$kept_xray"
         chmod +x "bin/${kept_xray_name}" > /dev/null 2>&1
     fi
-    chmod +x lx-ui bin/xray-linux-$(arch) > /dev/null 2>&1
+    chmod +x lxgate bin/xray-linux-$(arch) > /dev/null 2>&1
     if [[ -f bin/mtg-linux-arm ]]; then
         chmod +x bin/mtg-linux-arm > /dev/null 2>&1
     elif [[ -f bin/mtg-linux-$(arch) ]]; then
         chmod +x bin/mtg-linux-$(arch) > /dev/null 2>&1
     fi
 
-    # The archive's lx-ui.sh is built from the same commit as the binary.
-    echo -e "${green}Installing lx-ui.sh script...${plain}"
-    local xui_script_temp="/usr/bin/lx-ui-temp.$$"
-    if ! cp -f lx-ui.sh "${xui_script_temp}" || ! mv -f "${xui_script_temp}" /usr/bin/lx-ui; then
+    # The archive's lxgate.sh is built from the same commit as the binary.
+    echo -e "${green}Installing lxgate.sh script...${plain}"
+    local xui_script_temp="/usr/bin/lxgate-temp.$$"
+    if ! cp -f lxgate.sh "${xui_script_temp}" || ! mv -f "${xui_script_temp}" /usr/bin/lxgate; then
         rm -f "${xui_script_temp}"
-        _fail "ERROR: Failed to install lx-ui.sh script"
+        _fail "ERROR: Failed to install lxgate.sh script"
     fi
 
-    chmod +x ${xui_folder}/lx-ui.sh > /dev/null 2>&1
-    chmod +x /usr/bin/lx-ui > /dev/null 2>&1
-    mkdir -p /var/log/lx-ui > /dev/null 2>&1
+    chmod +x ${xui_folder}/lxgate.sh > /dev/null 2>&1
+    chmod +x /usr/bin/lxgate > /dev/null 2>&1
+    mkdir -p /var/log/lxgate > /dev/null 2>&1
 
     echo -e "${green}Changing owner...${plain}"
     chown -R root:root ${xui_folder} > /dev/null 2>&1
@@ -749,49 +749,49 @@ update_lx-ui() {
     # Finish the schema/data migrations before the service starts, so the service and
     # config_after_update's CLI calls never run them on the same database at once (#6728).
     echo -e "${green}Migrating database...${plain}"
-    "${xui_folder}/lx-ui" migrate
+    "${xui_folder}/lxgate" migrate
 
     if [[ $release == "alpine" ]]; then
-        echo -e "${green}Installing startup unit lx-ui.rc...${plain}"
-        mv -f "${xui_rc_temp}" /etc/init.d/lx-ui
+        echo -e "${green}Installing startup unit lxgate.rc...${plain}"
+        mv -f "${xui_rc_temp}" /etc/init.d/lxgate
         if [[ $? -ne 0 ]]; then
             rm -f "${xui_rc_temp}"
-            _fail "ERROR: Failed to install startup unit lx-ui.rc"
+            _fail "ERROR: Failed to install startup unit lxgate.rc"
         fi
-        chmod +x /etc/init.d/lx-ui > /dev/null 2>&1
-        chown root:root /etc/init.d/lx-ui > /dev/null 2>&1
-        rc-update add lx-ui > /dev/null 2>&1
-        rc-service lx-ui start > /dev/null 2>&1
+        chmod +x /etc/init.d/lxgate > /dev/null 2>&1
+        chown root:root /etc/init.d/lxgate > /dev/null 2>&1
+        rc-update add lxgate > /dev/null 2>&1
+        rc-service lxgate start > /dev/null 2>&1
     else
-        if [ -f "lx-ui.service" ]; then
+        if [ -f "lxgate.service" ]; then
             echo -e "${green}Installing systemd unit...${plain}"
-            if ! _install_xui_service_unit "lx-ui.service" "false"; then
-                echo -e "${red}Failed to copy lx-ui.service${plain}"
+            if ! _install_xui_service_unit "lxgate.service" "false"; then
+                echo -e "${red}Failed to copy lxgate.service${plain}"
                 exit 1
             fi
         else
             service_installed=false
             case "${release}" in
                 ubuntu | debian | armbian)
-                    if [ -f "lx-ui.service.debian" ]; then
+                    if [ -f "lxgate.service.debian" ]; then
                         echo -e "${green}Installing debian-like systemd unit...${plain}"
-                        if _install_xui_service_unit "lx-ui.service.debian" "false"; then
+                        if _install_xui_service_unit "lxgate.service.debian" "false"; then
                             service_installed=true
                         fi
                     fi
                     ;;
                 arch | manjaro | parch)
-                    if [ -f "lx-ui.service.arch" ]; then
+                    if [ -f "lxgate.service.arch" ]; then
                         echo -e "${green}Installing arch-like systemd unit...${plain}"
-                        if _install_xui_service_unit "lx-ui.service.arch" "false"; then
+                        if _install_xui_service_unit "lxgate.service.arch" "false"; then
                             service_installed=true
                         fi
                     fi
                     ;;
                 *)
-                    if [ -f "lx-ui.service.rhel" ]; then
+                    if [ -f "lxgate.service.rhel" ]; then
                         echo -e "${green}Installing rhel-like systemd unit...${plain}"
-                        if _install_xui_service_unit "lx-ui.service.rhel" "false"; then
+                        if _install_xui_service_unit "lxgate.service.rhel" "false"; then
                             service_installed=true
                         fi
                     fi
@@ -803,27 +803,27 @@ update_lx-ui() {
                 echo -e "${yellow}Service files not found in tar.gz, downloading from GitHub...${plain}"
                 case "${release}" in
                     ubuntu | debian | armbian)
-                        service_unit_url="${LXUI_RAW_BASE}/${script_ref}/lx-ui.service.debian"
+                        service_unit_url="${LXGATE_RAW_BASE}/${script_ref}/lxgate.service.debian"
                         ;;
                     arch | manjaro | parch)
-                        service_unit_url="${LXUI_RAW_BASE}/${script_ref}/lx-ui.service.arch"
+                        service_unit_url="${LXGATE_RAW_BASE}/${script_ref}/lxgate.service.arch"
                         ;;
                     *)
-                        service_unit_url="${LXUI_RAW_BASE}/${script_ref}/lx-ui.service.rhel"
+                        service_unit_url="${LXGATE_RAW_BASE}/${script_ref}/lxgate.service.rhel"
                         ;;
                 esac
 
                 if ! _install_xui_service_unit "$service_unit_url" "true"; then
-                    echo -e "${red}Failed to install lx-ui.service from GitHub (${script_ref}) -- the release tarball did not ship one either${plain}"
+                    echo -e "${red}Failed to install lxgate.service from GitHub (${script_ref}) -- the release tarball did not ship one either${plain}"
                     exit 1
                 fi
             fi
         fi
-        chown root:root ${xui_service}/lx-ui.service > /dev/null 2>&1
-        chmod 644 ${xui_service}/lx-ui.service > /dev/null 2>&1
+        chown root:root ${xui_service}/lxgate.service > /dev/null 2>&1
+        chmod 644 ${xui_service}/lxgate.service > /dev/null 2>&1
         systemctl daemon-reload > /dev/null 2>&1
-        systemctl enable lx-ui > /dev/null 2>&1
-        systemctl start lx-ui > /dev/null 2>&1
+        systemctl enable lxgate > /dev/null 2>&1
+        systemctl start lxgate > /dev/null 2>&1
     fi
 
     config_after_update
@@ -833,29 +833,29 @@ update_lx-ui() {
     # Never fatal.
     setup_fail2ban
 
-    echo -e "${green}lx-ui ${tag_version}${plain} updating finished, it is running now..."
+    echo -e "${green}lxgate ${tag_version}${plain} updating finished, it is running now..."
     echo -e ""
     echo -e "┌───────────────────────────────────────────────────────┐
-│  ${blue}lx-ui control menu usages (subcommands):${plain}              │
+│  ${blue}lxgate control menu usages (subcommands):${plain}              │
 │                                                       │
-│  ${blue}lx-ui${plain}              - Admin Management Script          │
-│  ${blue}lx-ui start${plain}        - Start                            │
-│  ${blue}lx-ui stop${plain}         - Stop                             │
-│  ${blue}lx-ui restart${plain}      - Restart                          │
-│  ${blue}lx-ui status${plain}       - Current Status                   │
-│  ${blue}lx-ui settings${plain}     - Current Settings                 │
-│  ${blue}lx-ui enable${plain}       - Enable Autostart on OS Startup   │
-│  ${blue}lx-ui disable${plain}      - Disable Autostart on OS Startup  │
-│  ${blue}lx-ui log${plain}          - Check logs                       │
-│  ${blue}lx-ui banlog${plain}       - Check Fail2ban ban logs          │
-│  ${blue}lx-ui update${plain}       - Update                           │
-│  ${blue}lx-ui legacy${plain}       - Legacy version                   │
-│  ${blue}lx-ui install${plain}      - Install                          │
-│  ${blue}lx-ui uninstall${plain}    - Uninstall                        │
+│  ${blue}lxgate${plain}              - Admin Management Script          │
+│  ${blue}lxgate start${plain}        - Start                            │
+│  ${blue}lxgate stop${plain}         - Stop                             │
+│  ${blue}lxgate restart${plain}      - Restart                          │
+│  ${blue}lxgate status${plain}       - Current Status                   │
+│  ${blue}lxgate settings${plain}     - Current Settings                 │
+│  ${blue}lxgate enable${plain}       - Enable Autostart on OS Startup   │
+│  ${blue}lxgate disable${plain}      - Disable Autostart on OS Startup  │
+│  ${blue}lxgate log${plain}          - Check logs                       │
+│  ${blue}lxgate banlog${plain}       - Check Fail2ban ban logs          │
+│  ${blue}lxgate update${plain}       - Update                           │
+│  ${blue}lxgate legacy${plain}       - Legacy version                   │
+│  ${blue}lxgate install${plain}      - Install                          │
+│  ${blue}lxgate uninstall${plain}    - Uninstall                        │
 └───────────────────────────────────────────────────────┘"
 }
 
 echo -e "${green}Running...${plain}"
 require_writable_update_paths
 install_base
-update_lx-ui $1
+update_lxgate $1

@@ -25,7 +25,7 @@ func TestNodeSyncPushSkipsOperatorTLSGuard(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	dbDir := t.TempDir()
 	t.Setenv("XUI_DB_FOLDER", dbDir)
-	dbtest.InitDB(t, filepath.Join(dbDir, "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(dbDir, "lxgate.db"))
 	prev := runtime.GetManager()
 	runtime.SetManager(runtime.NewManager(runtime.LocalDeps{APIPort: func() int { return 0 }, SetNeedRestart: func() {}}))
 	t.Cleanup(func() { runtime.SetManager(prev) })
@@ -109,7 +109,7 @@ func TestNodeSyncPushSkipsOperatorTLSGuard(t *testing.T) {
 // cap could still cost the panel close to a gigabyte; the list is capped by entry count.
 func TestPushClientTrafficsCapsTheListByEntryCount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lxgate.db"))
 	engine := gin.New()
 	engine.Use(func(c *gin.Context) {
 		c.Set("I18n", func(_ locale.I18nType, key string, _ ...string) string { return key })

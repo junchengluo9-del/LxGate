@@ -175,7 +175,7 @@ func TestOutboundSubscriptionRefreshKeepsTagsWhenRealityParamsRotate(t *testing.
 	pbk := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
 	type server struct{ remark, address string }
 	var servers []server
-	// A lx-ui upstream picks sid and sni at random per request, and older releases spx too (#6556).
+	// A lxgate upstream picks sid and sni at random per request, and older releases spx too (#6556).
 	subID := serveOutboundSubscription(t, "sub", func(n int) string {
 		lines := make([]string, 0, len(servers))
 		for _, s := range servers {

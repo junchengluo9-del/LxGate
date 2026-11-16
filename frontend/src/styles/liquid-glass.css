@@ -1,0 +1,395 @@
+/*
+ * Liquid Glass 2.0 — LxGate's single visual language.
+ *
+ * Two canvases, one material:
+ *   light  #FAFBFC canvas, translucent white surfaces, hairline slate borders
+ *   dark   #090B10 canvas, #12151E surfaces, 1px top highlight instead of borders
+ *
+ * Frosted glass (backdrop-filter) is reserved for chrome the eye passes through —
+ * sidebar, status capsule, drawers, modals — while dense tables and forms stay on
+ * a crisp, high-contrast surface. Numbers in tables and statistics use
+ * tabular-nums so traffic and latency columns do not shimmer as they update.
+ *
+ * Everything is driven by the custom properties on body.light / body.dark, so a
+ * component only has to reference var(--lg-*) to participate in the theme.
+ */
+
+body.light {
+  --lg-canvas: #fafbfc;
+  --lg-canvas-accent:
+    radial-gradient(1200px 600px at 12% -10%, rgba(9, 88, 217, 0.07), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(120, 87, 255, 0.05), transparent 55%);
+  --lg-surface: rgba(255, 255, 255, 0.82);
+  --lg-surface-solid: #ffffff;
+  --lg-surface-strong: rgba(255, 255, 255, 0.94);
+  --lg-chrome: rgba(255, 255, 255, 0.74);
+  --lg-border: rgba(15, 23, 42, 0.08);
+  --lg-border-strong: rgba(15, 23, 42, 0.14);
+  --lg-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --lg-text: #0f172a;
+  --lg-text-dim: rgba(15, 23, 42, 0.62);
+  --lg-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 10px 30px rgba(15, 23, 42, 0.06);
+  --lg-shadow-lifted: 0 2px 6px rgba(15, 23, 42, 0.07), 0 18px 44px rgba(15, 23, 42, 0.1);
+  --lg-accent: #0958d9;
+  --lg-accent-soft: rgba(9, 88, 217, 0.1);
+  --lg-ok: #147d3f;
+  --lg-warn: #b25e00;
+  --lg-bad: #c02626;
+  --lg-blur: blur(18px) saturate(160%);
+  --lg-radius-sm: 8px;
+  --lg-radius-md: 12px;
+  --lg-radius-lg: 16px;
+}
+
+body.dark {
+  --lg-canvas: #090b10;
+  --lg-canvas-accent:
+    radial-gradient(1100px 560px at 8% -12%, rgba(76, 141, 255, 0.14), transparent 62%),
+    radial-gradient(900px 520px at 100% 0%, rgba(124, 92, 255, 0.1), transparent 58%);
+  --lg-surface: #12151e;
+  --lg-surface-solid: #12151e;
+  --lg-surface-strong: rgba(22, 26, 36, 0.94);
+  --lg-chrome: rgba(18, 21, 30, 0.72);
+  --lg-border: rgba(255, 255, 255, 0.08);
+  --lg-border-strong: rgba(255, 255, 255, 0.14);
+  --lg-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --lg-text: #e8ecf6;
+  --lg-text-dim: rgba(232, 236, 246, 0.62);
+  --lg-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.45);
+  --lg-shadow-lifted: 0 2px 8px rgba(0, 0, 0, 0.55), 0 22px 54px rgba(0, 0, 0, 0.6);
+  --lg-accent: #4c8dff;
+  --lg-accent-soft: rgba(76, 141, 255, 0.16);
+  --lg-ok: #4ade80;
+  --lg-warn: #fbbf24;
+  --lg-bad: #f87171;
+  --lg-blur: blur(18px) saturate(160%);
+  --lg-radius-sm: 8px;
+  --lg-radius-md: 12px;
+  --lg-radius-lg: 16px;
+}
+
+body.dark[data-theme='ultra-dark'] {
+  --lg-canvas: #000000;
+  --lg-surface: #101013;
+  --lg-surface-solid: #101013;
+  --lg-surface-strong: rgba(26, 26, 30, 0.94);
+  --lg-chrome: rgba(16, 16, 19, 0.78);
+  --lg-border: rgba(255, 255, 255, 0.06);
+  --lg-border-strong: rgba(255, 255, 255, 0.1);
+  --lg-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --lg-shadow: 0 1px 2px rgba(0, 0, 0, 0.7), 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* ------------------------------------------------------------------ canvas */
+
+html,
+body {
+  background: var(--lg-canvas, #fafbfc);
+}
+
+body.light,
+body.dark {
+  background-color: var(--lg-canvas);
+  background-image: var(--lg-canvas-accent);
+  background-attachment: fixed;
+  color: var(--lg-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Every page container defers to the shared canvas variables, so the old
+   per-page #e6e8ec / #1a1b1f pairs no longer paint over the glass backdrop. */
+body.light :is(.index-page, .clients-page, .inbounds-page, .xray-page, .settings-page,
+    .nodes-page, .hosts-page, .groups-page, .api-docs-page, .vpngate-page, .system-page),
+body.dark :is(.index-page, .clients-page, .inbounds-page, .xray-page, .settings-page,
+    .nodes-page, .hosts-page, .groups-page, .api-docs-page, .vpngate-page, .system-page) {
+  --bg-page: transparent;
+  --bg-card: var(--lg-surface);
+  min-height: 100vh;
+  background: transparent;
+}
+
+body :is(.ant-layout, .ant-layout-content, .content-shell, .content-area) {
+  background: transparent;
+}
+
+/* ------------------------------------------------------- frosted chrome */
+
+body :is(.ant-sidebar) .ant-layout-sider,
+body :is(.ant-sidebar) .ant-layout-sider-children {
+  background: var(--lg-chrome) !important;
+  backdrop-filter: var(--lg-blur);
+  -webkit-backdrop-filter: var(--lg-blur);
+  border-right: 1px solid var(--lg-border);
+  box-shadow: var(--lg-highlight);
+}
+
+body :is(.ant-drawer-content),
+body :is(.ant-modal-content),
+body :is(.ant-popover-inner) {
+  background: var(--lg-surface-strong) !important;
+  backdrop-filter: var(--lg-blur);
+  -webkit-backdrop-filter: var(--lg-blur);
+  border: 1px solid var(--lg-border);
+  border-radius: var(--lg-radius-lg);
+  box-shadow: var(--lg-shadow-lifted), var(--lg-highlight);
+}
+
+body :is(.ant-drawer-content) {
+  border-radius: 0 var(--lg-radius-lg) var(--lg-radius-lg) 0;
+}
+
+/* ------------------------------------------------------------- surfaces */
+
+body :is(.ant-card) {
+  background: var(--lg-surface);
+  border: 1px solid var(--lg-border);
+  border-radius: var(--lg-radius-lg);
+  box-shadow: var(--lg-shadow), var(--lg-highlight);
+}
+
+/* Dense data stays crisp: a card that carries a table gets the solid surface
+   and no blur, because frosted behind scrolling rows costs legibility. */
+body :is(.ant-card):has(.ant-table-wrapper),
+body :is(.ant-card):has(.ant-form) {
+  background: var(--lg-surface-solid);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+body :is(.ant-card-head) {
+  border-bottom: 1px solid var(--lg-border);
+  background: transparent;
+}
+
+body :is(.ant-card-head-title) {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Tables: no inner borders, hairline row separators, tabular numbers. */
+body :is(.ant-table) {
+  background: transparent;
+
+  --ant-table-header-bg: transparent;
+}
+
+body :is(.ant-table-thead) > tr > th {
+  background: transparent;
+  color: var(--lg-text-dim);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--lg-border-strong);
+}
+
+body :is(.ant-table-tbody) > tr > td {
+  border-bottom: 1px solid var(--lg-border);
+}
+
+body :is(.ant-table-tbody) > tr:last-child > td {
+  border-bottom: none;
+}
+
+body :is(.ant-table-tbody) > tr:hover > td {
+  background: var(--lg-accent-soft);
+}
+
+body :is(.ant-table-cell) {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tabular numbers wherever numbers live. */
+body :is(.ant-statistic-content, .ant-statistic-content-value, .ant-table-cell, .lg-num) {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+body :is(.ant-descriptions-item-content),
+body :is(.ant-typography code, code, pre) {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------- controls */
+
+body :is(.ant-btn) {
+  border-radius: var(--lg-radius-sm);
+}
+
+body :is(.ant-btn-primary) {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12), 0 6px 16px var(--lg-accent-soft);
+}
+
+body :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector) {
+  border-radius: var(--lg-radius-sm) !important;
+  background: var(--lg-surface-strong) !important;
+  border-color: var(--lg-border) !important;
+}
+
+body :is(.ant-tag) {
+  border-radius: 999px;
+  border-color: var(--lg-border);
+}
+
+body :is(.ant-segmented) {
+  background: var(--lg-surface-strong);
+  border: 1px solid var(--lg-border);
+  border-radius: 999px;
+  padding: 2px;
+}
+
+body :is(.ant-segmented-item) {
+  border-radius: 999px;
+}
+
+body :is(.ant-segmented-item-selected) {
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+/* ------------------------------------------------------ shared primitives */
+
+.lg-card {
+  background: var(--lg-surface);
+  border: 1px solid var(--lg-border);
+  border-radius: var(--lg-radius-lg);
+  box-shadow: var(--lg-shadow), var(--lg-highlight);
+  padding: 20px;
+}
+
+.lg-card.crisp {
+  background: var(--lg-surface-solid);
+  backdrop-filter: none;
+}
+
+.lg-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.lg-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lg-spread {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lg-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--lg-text);
+}
+
+.lg-subtitle {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: var(--lg-text-dim);
+}
+
+.lg-muted {
+  color: var(--lg-text-dim);
+}
+
+.lg-mono {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+}
+
+.lg-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--lg-border);
+  background: var(--lg-surface-strong);
+  font-size: 0.78rem;
+  font-weight: 550;
+  color: var(--lg-text);
+  white-space: nowrap;
+}
+
+.lg-pill.ok {
+  color: var(--lg-ok);
+  border-color: color-mix(in srgb, var(--lg-ok) 35%, transparent);
+  background: color-mix(in srgb, var(--lg-ok) 10%, var(--lg-surface-strong));
+}
+
+.lg-pill.warn {
+  color: var(--lg-warn);
+  border-color: color-mix(in srgb, var(--lg-warn) 35%, transparent);
+  background: color-mix(in srgb, var(--lg-warn) 10%, var(--lg-surface-strong));
+}
+
+.lg-pill.bad {
+  color: var(--lg-bad);
+  border-color: color-mix(in srgb, var(--lg-bad) 35%, transparent);
+  background: color-mix(in srgb, var(--lg-bad) 10%, var(--lg-surface-strong));
+}
+
+.lg-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.lg-log {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: var(--lg-radius-md);
+  border: 1px solid var(--lg-border);
+  background: color-mix(in srgb, var(--lg-canvas) 88%, #000 12%);
+  color: var(--lg-text);
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.lg-empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--lg-text-dim);
+  font-size: 0.85rem;
+}
+
+/* Graceful degradation: without backdrop-filter the chrome falls back to a
+   solid surface instead of a washed-out translucent one. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  body :is(.ant-sidebar) .ant-layout-sider,
+  body :is(.ant-drawer-content),
+  body :is(.ant-modal-content) {
+    background: var(--lg-surface-solid) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .lg-card {
+    padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-card,
+  .ant-card {
+    transition: none;
+  }
+}

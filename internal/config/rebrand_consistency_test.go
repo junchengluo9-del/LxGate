@@ -36,16 +36,19 @@ func readRebrandEnv(t *testing.T) map[string]string {
 // change the ORG placeholder, the display name and the identifier.
 func TestEmbeddedBrandMatchesRebrandEnv(t *testing.T) {
 	env := readRebrandEnv(t)
-	if got := GetName(); got != env["LXUI_NAME"] {
-		t.Errorf("GetName() = %q, rebrand.env LXUI_NAME = %q", got, env["LXUI_NAME"])
+	if got := GetName(); got != env["LXGATE_NAME"] {
+		t.Errorf("GetName() = %q, rebrand.env LXGATE_NAME = %q", got, env["LXGATE_NAME"])
 	}
-	if got := strings.TrimSpace(repo); got != env["LXUI_REPO"] {
-		t.Errorf("embedded repo = %q, rebrand.env LXUI_REPO = %q", got, env["LXUI_REPO"])
+	if got := strings.TrimSpace(repo); got != env["LXGATE_REPO"] {
+		t.Errorf("embedded repo = %q, rebrand.env LXGATE_REPO = %q", got, env["LXGATE_REPO"])
 	}
-	if got := GetDisplayName(); got != env["LXUI_DISPLAY"] {
-		t.Errorf("GetDisplayName() = %q, rebrand.env LXUI_DISPLAY = %q", got, env["LXUI_DISPLAY"])
+	if got := strings.TrimSpace(display); got != env["LXGATE_DISPLAY"] {
+		t.Errorf("embedded display = %q, rebrand.env LXGATE_DISPLAY = %q", got, env["LXGATE_DISPLAY"])
 	}
-	if strings.Contains(env["LXUI_REPO"], "<ORG>") && releaseRepo == "" && os.Getenv("LXUI_REPO") == "" && IsReleaseRepoConfigured() {
+	if got := GetDisplayName(); got != env["LXGATE_DISPLAY"] {
+		t.Errorf("GetDisplayName() = %q, rebrand.env LXGATE_DISPLAY = %q", got, env["LXGATE_DISPLAY"])
+	}
+	if strings.Contains(env["LXGATE_REPO"], "<ORG>") && releaseRepo == "" && os.Getenv("LXGATE_REPO") == "" && IsReleaseRepoConfigured() {
 		t.Error("the <ORG> placeholder must never count as a configured release repo")
 	}
 }

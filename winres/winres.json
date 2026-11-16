@@ -8,10 +8,10 @@
     "#1": {
       "0409": {
         "identity": {
-          "name": "lx-ui",
+          "name": "lxgate",
           "version": ""
         },
-        "description": "Lx-ui web panel for Xray-core",
+        "description": "LxGate web panel for Xray-core",
         "minimum-os": "win7",
         "execution-level": "as invoker",
         "ui-access": false,
@@ -38,13 +38,13 @@
         },
         "info": {
           "0409": {
-            "CompanyName": "Lx-ui contributors",
-            "FileDescription": "Lx-ui web panel for Xray-core",
+            "CompanyName": "LxGate contributors",
+            "FileDescription": "LxGate web panel for Xray-core",
             "FileVersion": "",
-            "InternalName": "lx-ui",
-            "LegalCopyright": "Lx-ui contributors, licensed under GPL-3.0",
-            "OriginalFilename": "lx-ui.exe",
-            "ProductName": "Lx-ui",
+            "InternalName": "lxgate",
+            "LegalCopyright": "LxGate contributors, licensed under GPL-3.0",
+            "OriginalFilename": "lxgate.exe",
+            "ProductName": "LxGate",
             "ProductVersion": ""
           }
         }

@@ -18,7 +18,7 @@ func initLdapJobDB(t *testing.T) {
 	t.Helper()
 	dbDir := t.TempDir()
 	t.Setenv("XUI_DB_FOLDER", dbDir)
-	dbtest.InitDB(t, filepath.Join(dbDir, "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(dbDir, "lxgate.db"))
 }
 
 func TestBuildClient_ConvertsDefaultTotalGBToBytes(t *testing.T) {

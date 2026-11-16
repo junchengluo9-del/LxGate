@@ -14,7 +14,7 @@ import (
 // subscriptions, otherwise an HWID-limited donor answers 404.
 func TestFetchSendsStableHwid(t *testing.T) {
 	allowLoopbackProvider(t)
-	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lxgate.db"))
 
 	var gotHwid string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

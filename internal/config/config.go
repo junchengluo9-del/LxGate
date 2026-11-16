@@ -1,4 +1,4 @@
-// Package config provides configuration management utilities for the lx-ui panel,
+// Package config provides configuration management utilities for the lxgate panel,
 // including version information, logging levels, database paths, and environment variable handling.
 package config
 
@@ -40,7 +40,7 @@ const (
 	Error   LogLevel = "error"
 )
 
-// GetBaseVersion returns the raw embedded release version of the lx-ui panel
+// GetBaseVersion returns the raw embedded release version of the lxgate panel
 // (e.g. "3.4.0"). This is the panel's own version, not the Xray version. For the
 // version a panel advertises/displays (which adds a "dev+<sha>" label on dev
 // builds), use GetPanelVersion.
@@ -48,7 +48,7 @@ func GetBaseVersion() string {
 	return strings.TrimSpace(version)
 }
 
-// GetName returns the name of the lx-ui application.
+// GetName returns the name of the lxgate application.
 func GetName() string {
 	return strings.TrimSpace(name)
 }
@@ -160,7 +160,7 @@ func GetDBFolderPath() string {
 	if runtime.GOOS == "windows" {
 		return getBaseDir()
 	}
-	return "/etc/lx-ui"
+	return "/etc/lxgate"
 }
 
 // GetDBPath returns the full path to the database file.
@@ -204,7 +204,7 @@ func GetNodeTokenKeyFile() string {
 	if p := strings.TrimSpace(os.Getenv("XUI_NODE_TOKEN_KEY_FILE")); p != "" {
 		return p
 	}
-	return "/etc/lx-ui/node_token_key.json"
+	return "/etc/lxgate/node_token_key.json"
 }
 
 // GetNodeTokenKeyEnv returns the name of the env var holding a single base64
@@ -220,9 +220,9 @@ func GetEnvFilePaths() []string {
 		return nil
 	}
 	return []string{
-		"/etc/default/lx-ui",
-		"/etc/conf.d/lx-ui",
-		"/etc/sysconfig/lx-ui",
+		"/etc/default/lxgate",
+		"/etc/conf.d/lxgate",
+		"/etc/sysconfig/lxgate",
 	}
 }
 
@@ -236,10 +236,10 @@ func GetLogFolder() string {
 	// scatters a log/ directory through the source tree (one per tested package).
 	// Redirect test runs to a shared temp folder so the source tree stays clean.
 	if testing.Testing() {
-		return filepath.Join(os.TempDir(), "lx-ui-test-log")
+		return filepath.Join(os.TempDir(), "lxgate-test-log")
 	}
 	if runtime.GOOS == "windows" {
 		return filepath.Join(".", "log")
 	}
-	return "/var/log/lx-ui"
+	return "/var/log/lxgate"
 }

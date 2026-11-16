@@ -22,7 +22,7 @@ import (
 )
 
 func TestClientGetBySubIDHTTP(t *testing.T) {
-	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lxgate.db"))
 	db := database.GetDB()
 	clients := []model.ClientRecord{
 		{Email: "alice@example.com", SubID: "shared_%", UUID: "alice-uuid", Enable: true},

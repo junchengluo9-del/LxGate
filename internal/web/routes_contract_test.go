@@ -45,7 +45,7 @@ func inContractScope(method, path string) bool {
 // newTestEngine builds the real panel router on a throwaway database.
 func newTestEngine(t *testing.T) *gin.Engine {
 	t.Helper()
-	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lxgate.db"))
 
 	previous := global.GetWebServer()
 	s := NewServer(nil)

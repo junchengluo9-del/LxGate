@@ -12,13 +12,13 @@ import (
 )
 
 // killStrayMtgProcesses terminates orphaned mtg sidecars left over from a
-// previous lx-ui run and returns how many were killed.
+// previous lxgate run and returns how many were killed.
 //
-// lx-ui starts one mtg process per mtproto inbound outside its own lifecycle, and
+// lxgate starts one mtg process per mtproto inbound outside its own lifecycle, and
 // on Linux a child is not guaranteed to die with the panel (there is no
 // kill-on-exit, unlike the Windows job object). A survivor keeps holding the
 // inbound port with a now-stale secret, so new clients are silently
-// domain-fronted to the FakeTLS domain instead of proxied to Telegram. lx-ui is
+// domain-fronted to the FakeTLS domain instead of proxied to Telegram. lxgate is
 // the sole owner of mtg, so any process matching our binary name at startup is
 // an orphan and is safe to kill before we start our own.
 //

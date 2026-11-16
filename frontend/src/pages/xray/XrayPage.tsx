@@ -22,6 +22,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useXraySetting } from '@/hooks/useXraySetting';
 import type { XraySettingsValue } from '@/hooks/useXraySetting';
 import AppSidebar from '@/layouts/AppSidebar';
+import TopStatusBar from '@/layouts/TopStatusBar';
 import { JsonEditor } from '@/components/form';
 import { setMessageInstance } from '@/utils/messageBus';
 
@@ -317,6 +318,8 @@ export default function XrayPage() {
         <AppSidebar />
 
         <Layout className="content-shell">
+
+          <TopStatusBar />
           <Layout.Content id="content-layout" className="content-area">
             <Spin
               aria-live="off"

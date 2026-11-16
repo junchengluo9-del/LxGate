@@ -1,7 +1,7 @@
 package main
 
 // End-to-end check of the legacy data migration with a real SQLite database:
-// a folder that only holds the legacy database must come up as an Lx-ui
+// a folder that only holds the legacy database must come up as an LxGate
 // database with the same settings and inbounds, the original left untouched.
 
 import (
@@ -19,7 +19,7 @@ import (
 func TestLegacyDatabaseMigratesWithData(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XUI_DB_FOLDER", dir)
-	legacyDB := filepath.Join(dir, "x-ui.db") // lxui:keep
+	legacyDB := filepath.Join(dir, "x-ui.db") // lxgate:keep
 
 	if err := database.InitDB(legacyDB); err != nil {
 		t.Fatalf("init legacy db: %v", err)

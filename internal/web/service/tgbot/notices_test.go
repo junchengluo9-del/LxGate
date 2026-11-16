@@ -96,7 +96,7 @@ func TestBackupArrivesAsOneMessageWithACaption(t *testing.T) {
 	notices.reset()
 
 	tb := initReportDB(t)
-	tb.sendBackupFile(1, []byte("db-bytes"), "lx-ui.db", "host\nbackup time")
+	tb.sendBackupFile(1, []byte("db-bytes"), "lxgate.db", "host\nbackup time")
 
 	got := calls()
 	sends := 0

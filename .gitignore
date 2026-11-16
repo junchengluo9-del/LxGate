@@ -17,14 +17,14 @@ tmp/
 # Ignore build and distribution directories
 backup/
 bin/
-lx-ui/
+lxgate/
 dist/
 release/
 node_modules/
 
 # Ignore compiled binaries
 main
-lx-ui
+lxgate
 
 # Ignore OS specific files
 .DS_Store
@@ -33,9 +33,9 @@ Thumbs.db
 # Ignore Go build files
 *.exe
 *.syso
-lx-ui.db
-lx-ui.db-shm
-lx-ui.db-wal
+lxgate.db
+lxgate.db-shm
+lxgate.db-wal
 system_metrics.gob
 *.dump
 

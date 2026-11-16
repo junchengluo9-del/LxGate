@@ -26,7 +26,7 @@ func seedSubDB(t *testing.T) {
 	t.Helper()
 	dbDir := t.TempDir()
 	t.Setenv("XUI_DB_FOLDER", dbDir)
-	dbtest.InitDB(t, filepath.Join(dbDir, "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(dbDir, "lxgate.db"))
 }
 
 // seedSubInbound creates a VLESS inbound with one client wired into the

@@ -61,7 +61,7 @@ func filterOutboundsRejectedByCore(label string, outbounds []any) ([]any, []stri
 // subscription may aggregate many upstream outbounds into one document.
 const maxOutboundSubscriptionBytes int64 = 8 << 20
 
-const defaultOutboundSubscriptionUserAgent = "lx-ui-outbound-sub/1.0"
+const defaultOutboundSubscriptionUserAgent = "lxgate-outbound-sub/1.0"
 
 var errOutboundSubscriptionBodyTooLarge = errors.New("outbound subscription response body exceeds size limit")
 
@@ -436,7 +436,7 @@ func (s *OutboundSubscriptionService) fetchOutbounds(sub *model.OutboundSubscrip
 		userAgent = defaultOutboundSubscriptionUserAgent
 	}
 	req.Header.Set("User-Agent", userAgent)
-	// A lx-ui donor with an HWID limit answers 404 when the header is empty (#6574).
+	// A lxgate donor with an HWID limit answers 404 when the header is empty (#6574).
 	if hwid := ExternalSubscriptionHwid(); hwid != "" {
 		req.Header.Set("X-HWID", hwid)
 	}

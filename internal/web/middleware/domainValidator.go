@@ -1,4 +1,4 @@
-// Package middleware provides HTTP middleware functions for the lx-ui web panel,
+// Package middleware provides HTTP middleware functions for the lxgate web panel,
 // including domain validation utilities.
 package middleware
 

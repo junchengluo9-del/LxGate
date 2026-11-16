@@ -153,7 +153,7 @@ func (s *Subscriber) FormatEmbed(e eventbus.Event) (Embed, bool) {
 	}
 
 	footer := &EmbedFooter{
-		Text: truncateUnits("lx-ui • "+h, 2048),
+		Text: truncateUnits("lxgate • "+h, 2048),
 	}
 	tr := translator(s.settingService)
 

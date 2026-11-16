@@ -1,9 +1,9 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Lx-ui Panel API",
+    "title": "LxGate Panel API",
     "version": "3.x",
-    "description": "Programmatic interface to a Lx-ui panel. Authenticate either by logging in (cookie) or with a scoped API token from Settings → Security → API Token (Bearer). Token access is limited by its admin, monitor, node-sync, or node-admin scope; treat admin tokens like the panel password."
+    "description": "Programmatic interface to a LxGate panel. Authenticate either by logging in (cookie) or with a scoped API token from Settings → Security → API Token (Bearer). Token access is limited by its admin, monitor, node-sync, or node-admin scope; treat admin tokens like the panel password."
   },
   "servers": [
     {
@@ -21,7 +21,7 @@
       "cookieAuth": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "lx-ui",
+        "name": "lxgate",
         "description": "Session cookie set by POST /login. Browser-only."
       }
     },
@@ -3666,7 +3666,7 @@
         "type": "object"
       },
       "Node": {
-        "description": "Node represents a remote lx-ui panel registered with the central panel.\nThe central panel polls each node's existing /panel/api/server/status\nendpoint over HTTP using the per-node ApiToken to populate the runtime\nstatus fields below.",
+        "description": "Node represents a remote lxgate panel registered with the central panel.\nThe central panel polls each node's existing /panel/api/server/status\nendpoint over HTTP using the per-node ApiToken to populate the runtime\nstatus fields below.",
         "properties": {
           "activeCount": {
             "example": 23,
@@ -4409,7 +4409,7 @@
             "type": "array"
           },
           "installCommand": {
-            "example": "sudo /usr/local/lx-ui/lx-ui install-awg-kernel",
+            "example": "sudo /usr/local/lxgate/lxgate install-awg-kernel",
             "type": "string"
           },
           "ready": {
@@ -4689,7 +4689,7 @@
         "type": "object"
       },
       "Setting": {
-        "description": "Setting stores key-value configuration settings for the lx-ui panel.",
+        "description": "Setting stores key-value configuration settings for the lxgate panel.",
         "properties": {
           "id": {
             "type": "integer"
@@ -4917,7 +4917,7 @@
         "type": "object"
       },
       "User": {
-        "description": "User represents a user account in the lx-ui panel.",
+        "description": "User represents a user account in the lxgate panel.",
         "properties": {
           "id": {
             "type": "integer"
@@ -4997,7 +4997,7 @@
     },
     {
       "name": "Nodes",
-      "description": "Manage remote lx-ui panels acting as nodes for a central panel. All endpoints under /panel/api/nodes."
+      "description": "Manage remote lxgate panels acting as nodes for a central panel. All endpoints under /panel/api/nodes."
     },
     {
       "name": "Hosts",
@@ -5458,7 +5458,7 @@
                         "detail": "awg"
                       }
                     ],
-                    "installCommand": "sudo /usr/local/lx-ui/lx-ui install-awg-kernel",
+                    "installCommand": "sudo /usr/local/lxgate/lxgate install-awg-kernel",
                     "ready": false
                   }
                 }
@@ -6793,7 +6793,7 @@
         "tags": [
           "Server"
         ],
-        "summary": "Check whether a newer lx-ui release is available on GitHub.",
+        "summary": "Check whether a newer lxgate release is available on GitHub.",
         "operationId": "get_panel_api_server_getPanelUpdateInfo",
         "responses": {
           "200": {
@@ -13581,7 +13581,7 @@
         "tags": [
           "Settings"
         ],
-        "summary": "Restart the entire lx-ui process after a 3-second grace period. The connection drops immediately; the panel comes back online ~5-10 seconds later.",
+        "summary": "Restart the entire lxgate process after a 3-second grace period. The connection drops immediately; the panel comes back online ~5-10 seconds later.",
         "operationId": "post_panel_api_setting_restartPanel",
         "responses": {
           "200": {
@@ -15114,8 +15114,8 @@
                   },
                   "userAgent": {
                     "type": "string",
-                    "default": "lx-ui-outbound-sub/1.0",
-                    "description": "Custom User-Agent sent when fetching this subscription. Defaults to \"lx-ui-outbound-sub/1.0\"."
+                    "default": "lxgate-outbound-sub/1.0",
+                    "description": "Custom User-Agent sent when fetching this subscription. Defaults to \"lxgate-outbound-sub/1.0\"."
                   },
                   "updateInterval": {
                     "type": "integer",
@@ -15212,8 +15212,8 @@
                   },
                   "userAgent": {
                     "type": "string",
-                    "default": "lx-ui-outbound-sub/1.0",
-                    "description": "Custom User-Agent sent when fetching this subscription. Defaults to \"lx-ui-outbound-sub/1.0\"."
+                    "default": "lxgate-outbound-sub/1.0",
+                    "description": "Custom User-Agent sent when fetching this subscription. Defaults to \"lxgate-outbound-sub/1.0\"."
                   },
                   "updateInterval": {
                     "type": "integer",

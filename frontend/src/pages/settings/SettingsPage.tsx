@@ -23,6 +23,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useAllSettings } from '@/api/queries/useAllSettings';
 import { AllSettingSchema } from '@/schemas/setting';
 import AppSidebar from '@/layouts/AppSidebar';
+import TopStatusBar from '@/layouts/TopStatusBar';
 import GeneralTab from './GeneralTab';
 import SecurityTab from './SecurityTab';
 import TelegramTab from './TelegramTab';
@@ -240,6 +241,8 @@ export default function SettingsPage() {
         <AppSidebar />
 
         <Layout className="content-shell">
+
+          <TopStatusBar />
           <Layout.Content id="content-layout" className="content-area">
             <Spin
               aria-live="off"

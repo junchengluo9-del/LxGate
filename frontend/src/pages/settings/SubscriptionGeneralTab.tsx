@@ -395,7 +395,7 @@ export default function SubscriptionGeneralTab({
               >
                 <Input
                   value={allSetting.subThemeDir}
-                  placeholder="/etc/lx-ui/sub_templates/my-theme/"
+                  placeholder="/etc/lxgate/sub_templates/my-theme/"
                   onChange={(e) => updateSetting({ subThemeDir: e.target.value })}
                 />
               </SettingListItem>

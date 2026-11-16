@@ -129,7 +129,7 @@ export default function XrayLogModal({ open, onClose }: XrayLogModalProps) {
 
   function download() {
     if (!Array.isArray(logs) || logs.length === 0) {
-      FileManager.downloadTextFile('', 'lx-ui.log');
+      FileManager.downloadTextFile('', 'lxgate.log');
       return;
     }
     const lines = logs
@@ -145,7 +145,7 @@ export default function XrayLogModal({ open, onClose }: XrayLogModalProps) {
         }
       })
       .join('\n');
-    FileManager.downloadTextFile(lines, 'lx-ui.log');
+    FileManager.downloadTextFile(lines, 'lxgate.log');
   }
 
   return (

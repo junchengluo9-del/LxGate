@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Xray-core version policy (Lx-ui).
+// Xray-core version policy (LxGate).
 //
 // The panel generates configs with the xray-core Go module pinned in go.mod
 // and ships one Xray binary per release. Switching the external binary to an

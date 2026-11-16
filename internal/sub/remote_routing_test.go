@@ -608,7 +608,7 @@ func TestRemoteRoutingHTTPClientRejectsLoopback(t *testing.T) {
 }
 
 func TestRemoteRoutingPersistedLoadRetriesAfterDatabaseBecomesReady(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "lx-ui.db")
+	dbPath := filepath.Join(t.TempDir(), "lxgate.db")
 	dbtest.InitDB(t, dbPath)
 
 	deeplink, err := normalizeHappRouting([]byte(`{"Name":"persisted-after-ready"}`))

@@ -94,9 +94,9 @@ const outboundSubscriptionBodyParams: EndpointParam[] = [
     name: 'userAgent',
     in: 'body (form)',
     type: 'string',
-    desc: 'Custom User-Agent sent when fetching this subscription. Defaults to "lx-ui-outbound-sub/1.0".',
+    desc: 'Custom User-Agent sent when fetching this subscription. Defaults to "lxgate-outbound-sub/1.0".',
     optional: true,
-    defaultValue: 'lx-ui-outbound-sub/1.0',
+    defaultValue: 'lxgate-outbound-sub/1.0',
   },
   {
     name: 'updateInterval',
@@ -565,7 +565,7 @@ export const sections: readonly Section[] = [
       {
         method: 'GET',
         path: '/panel/api/server/getPanelUpdateInfo',
-        summary: 'Check whether a newer lx-ui release is available on GitHub.',
+        summary: 'Check whether a newer lxgate release is available on GitHub.',
       },
       {
         method: 'GET',
@@ -1748,7 +1748,7 @@ export const sections: readonly Section[] = [
     id: 'nodes',
     title: 'Nodes',
     description:
-      'Manage remote lx-ui panels acting as nodes for a central panel. All endpoints under /panel/api/nodes.',
+      'Manage remote lxgate panels acting as nodes for a central panel. All endpoints under /panel/api/nodes.',
     endpoints: [
       {
         method: 'GET',
@@ -2058,7 +2058,7 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/setting/restartPanel',
         summary:
-          'Restart the entire lx-ui process after a 3-second grace period. The connection drops immediately; the panel comes back online ~5-10 seconds later.',
+          'Restart the entire lxgate process after a 3-second grace period. The connection drops immediately; the panel comes back online ~5-10 seconds later.',
       },
       {
         method: 'POST',
@@ -2876,6 +2876,168 @@ export const sections: readonly Section[] = [
           'Return the Clash subscription status and metadata headers without a body. Registered only when Clash subscriptions are enabled.',
         params: [{ name: 'subid', in: 'path', type: 'string', desc: 'Client subscription ID.' }],
         responses: subscriptionHeadResponses,
+      },
+    ],
+  },
+
+  {
+    id: 'vpngate',
+    title: 'VPNGate Exit',
+    description:
+      'Drives the embedded VPNGate engine. The engine listens on 127.0.0.1 only (internal API on LXGATE_VPNGATE_API_PORT, default 18787; SOCKS5/HTTP proxy on 7928) and authenticates the panel with a shared token, so every call here inherits the panel session, 2FA and CSRF middleware.',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/panel/api/vpngate/status',
+        summary:
+          'Engine supervisor state (availability, PID, restarts, ports, data directory) plus the engine\'s own per-service health report and the current Xray binding.',
+      },
+      {
+        method: 'GET',
+        path: '/panel/api/vpngate/nodes',
+        summary:
+          'Cached exit nodes with country, latency, score, sessions and probe state, together with the engine state (active node, routing mode, proxy health).',
+      },
+      {
+        method: 'GET',
+        path: '/panel/api/vpngate/logs',
+        summary: "Today's structured engine log entries (timestamp, level, module, message).",
+      },
+      {
+        method: 'GET',
+        path: '/panel/api/vpngate/xray-binding',
+        summary:
+          'Whether the Xray template currently carries the vpngate-out socks outbound, its proxy address and a routing-rule example.',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/refresh',
+        summary: 'Start a background fetch + speed-test of fresh VPNGate candidates.',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/check',
+        summary: 'Run the node maintenance pass synchronously (fetch, test, connect if needed).',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/test-nodes',
+        summary: 'Re-test the given node ids. Bound to 256 ids per request.',
+        params: [
+          {
+            name: 'ids',
+            in: 'body (json)',
+            type: 'string[]',
+            desc: 'Node ids to speed-test.',
+          },
+        ],
+        body: '{\n  "ids": ["JP_1.2.3.4_1194_udp"]\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/connect',
+        summary: 'Connect the tunnel to one node.',
+        params: [
+          {
+            name: 'id',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'Node id from /nodes.',
+          },
+        ],
+        body: '{\n  "id": "JP_1.2.3.4_1194_udp"\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/disconnect',
+        summary: 'Tear the tunnel down and stop auto-reconnect.',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/routing',
+        summary:
+          'Switch routing mode. The local proxy port never changes, so Xray outbounds that point at vpngate-out keep working without a restart.',
+        params: [
+          {
+            name: 'mode',
+            in: 'body (json)',
+            type: 'string',
+            enum: ['auto', 'fixed_region', 'fixed_ip', 'favorites'],
+            desc: 'Routing strategy.',
+          },
+          {
+            name: 'country',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'ISO country code; required for fixed_region.',
+            optional: true,
+          },
+          {
+            name: 'ipType',
+            in: 'body (json)',
+            type: 'string',
+            enum: ['all', 'residential', 'hosting'],
+            desc: 'Exit IP class filter. Default all.',
+            optional: true,
+          },
+          {
+            name: 'favFallback',
+            in: 'body (json)',
+            type: 'boolean',
+            desc: 'Fall back to any healthy node when favourites are unreachable. Default true.',
+            optional: true,
+          },
+        ],
+        body: '{\n  "mode": "fixed_region",\n  "country": "JP",\n  "ipType": "all",\n  "favFallback": true\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/test-proxy',
+        summary: 'Measure the live exit through the local proxy (exit IP + latency).',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/xray-bind',
+        summary:
+          'Insert or refresh the vpngate-out socks outbound in the Xray template and reload Xray. Existing outbounds and routing rules are preserved.',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/xray-unbind',
+        summary:
+          'Remove the vpngate-out outbound and any routing rule that targets it, then reload Xray.',
+      },
+    ],
+  },
+
+  {
+    id: 'system',
+    title: 'System & Update',
+    description:
+      'In-app version check and update trigger. The version check reads GitHub Releases of the release repository; the update either starts the native updater (binary replaced, database and vpngate_data preserved) or returns the docker compose command for container deployments.',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/panel/api/system/version',
+        summary:
+          'Current and latest version, changelog, release URL, deployment mode (isDocker / canSelfUpdate) and the update command when containerised. A failed GitHub call is reported in checkError instead of failing the request.',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/system/update',
+        summary:
+          'Start an update. Docker mode answers with the docker compose command and started=false; native mode starts the updater and returns runId.',
+      },
+      {
+        method: 'GET',
+        path: '/panel/api/system/update-status',
+        summary: 'Outcome of the last native update run (pending / success / failed).',
+      },
+      {
+        method: 'GET',
+        path: '/panel/api/system/info',
+        summary:
+          'Static installation facts: version, build commit, deployment mode, database path, VPNGate data directory and the update command.',
       },
     ],
   },

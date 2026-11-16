@@ -21,6 +21,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { useStatusQuery } from '@/api/queries/useStatusQuery';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import AppSidebar from '@/layouts/AppSidebar';
+import TopStatusBar from '@/layouts/TopStatusBar';
 import { LazyMount } from '@/components/utility';
 import { setMessageInstance } from '@/utils/messageBus';
 import OverviewActionBar from './OverviewActionBar';
@@ -171,6 +172,8 @@ export default function IndexPage() {
         <AppSidebar />
 
         <Layout className="content-shell">
+
+          <TopStatusBar />
           <Layout.Content className="content-area">
             <Spin
               aria-live="off"

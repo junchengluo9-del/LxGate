@@ -36,7 +36,7 @@ func TestHasDefaultCredential(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dbtest.InitDB(t, filepath.Join(t.TempDir(), "lx-ui.db"))
+			dbtest.InitDB(t, filepath.Join(t.TempDir(), "lxgate.db"))
 			if err := database.GetDB().Where("1 = 1").Delete(&model.User{}).Error; err != nil {
 				t.Fatalf("clear users: %v", err)
 			}
@@ -56,7 +56,7 @@ func TestHasDefaultCredential(t *testing.T) {
 // The login route refuses names over MaxUsernameLength unread, so storing one would lock
 // the admin out of their own panel.
 func TestUserSettersRefuseNamesTheLoginRouteRefuses(t *testing.T) {
-	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lxgate.db"))
 	svc := &UserService{}
 	if err := svc.UpdateFirstUser("admin", "s3cret-Pass"); err != nil {
 		t.Fatalf("UpdateFirstUser: %v", err)
@@ -91,7 +91,7 @@ func TestCheckUserTwoFactorSecretForms(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dbtest.InitDB(t, filepath.Join(t.TempDir(), "lx-ui.db"))
+			dbtest.InitDB(t, filepath.Join(t.TempDir(), "lxgate.db"))
 			svc := &UserService{}
 			if err := svc.UpdateFirstUser("admin", "s3cret-Pass"); err != nil {
 				t.Fatalf("UpdateFirstUser: %v", err)

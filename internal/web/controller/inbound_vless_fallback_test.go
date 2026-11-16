@@ -25,7 +25,7 @@ func TestVlessFallbackHTTPAndImportValidation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	folder := t.TempDir()
 	t.Setenv("XUI_DB_FOLDER", folder)
-	dbtest.InitDB(t, filepath.Join(folder, "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(folder, "lxgate.db"))
 	previous := runtime.GetManager()
 	runtime.SetManager(runtime.NewManager(runtime.LocalDeps{APIPort: func() int { return 0 }, SetNeedRestart: func() {}}))
 	t.Cleanup(func() { runtime.SetManager(previous) })

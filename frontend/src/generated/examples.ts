@@ -1088,7 +1088,7 @@ export const EXAMPLES: Record<string, unknown> = {
         "detail": "awg"
       }
     ],
-    "installCommand": "sudo /usr/local/lx-ui/lx-ui install-awg-kernel",
+    "installCommand": "sudo /usr/local/lxgate/lxgate install-awg-kernel",
     "ready": false
   },
   "RealityScanResult": {

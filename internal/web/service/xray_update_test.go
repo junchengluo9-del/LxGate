@@ -230,14 +230,14 @@ func TestBuildXrayVersionInfos(t *testing.T) {
 	}
 }
 
-// Opt-in check against a real Xray binary: LXUI_REAL_XRAY=/path/to/xray
-// LXUI_REAL_XRAY_VERSION=v26.10.10 go test -run RealXray ./internal/web/service
+// Opt-in check against a real Xray binary: LXGATE_REAL_XRAY=/path/to/xray
+// LXGATE_REAL_XRAY_VERSION=v26.10.10 go test -run RealXray ./internal/web/service
 func TestValidateRealXrayBinary(t *testing.T) {
-	bin := os.Getenv("LXUI_REAL_XRAY")
+	bin := os.Getenv("LXGATE_REAL_XRAY")
 	if bin == "" {
-		t.Skip("LXUI_REAL_XRAY not set")
+		t.Skip("LXGATE_REAL_XRAY not set")
 	}
-	version := os.Getenv("LXUI_REAL_XRAY_VERSION")
+	version := os.Getenv("LXGATE_REAL_XRAY_VERSION")
 	t.Setenv("XUI_BIN_FOLDER", filepath.Dir(bin))
 	cfg := []byte(`{"log":{"loglevel":"warning"},"inbounds":[{"tag":"api","listen":"127.0.0.1","port":62789,"protocol":"dokodemo-door","settings":{"address":"127.0.0.1"}}],"outbounds":[{"protocol":"freedom","tag":"direct"}]}`)
 	if err := validateXrayBinary(t.Context(), bin, version, cfg); err != nil {
@@ -252,7 +252,7 @@ func TestValidateRealXrayBinary(t *testing.T) {
 }
 
 // Real installs run with the default relative bin folder ("bin", resolved
-// against WorkingDirectory=/usr/local/lx-ui). The config test used to run the
+// against WorkingDirectory=/usr/local/lxgate). The config test used to run the
 // staged "bin/.xray-new-*" with cmd.Dir=bin, i.e. bin/bin/.xray-new-*, and
 // every panel Xray update failed with "fork/exec ...: no such file or
 // directory" (seen on a live install).

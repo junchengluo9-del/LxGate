@@ -931,7 +931,7 @@ func (s *SubClashService) buildAmneziaWGProxy(subReq *SubService, inbound *model
 	return proxy
 }
 
-// buildXhttpClashOpts converts xhttpSettings from lx-ui's camelCase JSON
+// buildXhttpClashOpts converts xhttpSettings from lxgate's camelCase JSON
 // storage into the kebab-case map that Mihomo expects under xhttp-opts.
 //
 // Only client-relevant fields are included (allowlist approach).

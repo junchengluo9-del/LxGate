@@ -35,50 +35,73 @@ const initialUltra = readBool(STORAGE_ULTRA, false);
 applyDom(initialDark, initialUltra);
 
 const DARK_TOKENS = {
-  colorBgBase: '#1a1b1f',
-  colorBgLayout: '#1a1b1f',
-  colorBgContainer: '#23252b',
-  colorBgElevated: '#2d2f37',
+  // Liquid Glass 2.0 dark canvas / surface pair. The canvas is near-black with a
+  // blue cast so the frosted sidebar and status capsule read as glass rather
+  // than grey panels.
+  colorBgBase: '#090B10',
+  colorBgLayout: '#090B10',
+  colorBgContainer: '#12151E',
+  colorBgElevated: '#161A24',
+  colorBorder: 'rgba(255, 255, 255, 0.08)',
+  colorBorderSecondary: 'rgba(255, 255, 255, 0.08)',
+  borderRadius: 12,
+  borderRadiusLG: 16,
+  borderRadiusSM: 8,
+  colorPrimary: '#4C8DFF',
 };
 const ULTRA_DARK_TOKENS = {
   colorBgBase: '#000',
   colorBgLayout: '#000',
   colorBgContainer: '#101013',
-  colorBgElevated: '#1a1a1e',
+  colorBgElevated: '#1A1A1E',
+  colorBorder: 'rgba(255, 255, 255, 0.06)',
+  colorBorderSecondary: 'rgba(255, 255, 255, 0.04)',
+  borderRadius: 12,
+  borderRadiusLG: 16,
+  borderRadiusSM: 8,
+  colorPrimary: '#4C8DFF',
 };
 const DARK_LAYOUT_TOKENS = {
-  bodyBg: '#1a1b1f',
-  headerBg: '#15161a',
+  bodyBg: 'transparent',
+  headerBg: 'transparent',
   headerColor: '#ffffff',
-  footerBg: '#1a1b1f',
-  siderBg: '#15161a',
-  triggerBg: '#23252b',
+  footerBg: 'transparent',
+  siderBg: 'rgba(18, 21, 30, 0.72)',
+  triggerBg: '#12151E',
   triggerColor: '#ffffff',
 };
 const ULTRA_DARK_LAYOUT_TOKENS = {
-  bodyBg: '#000',
-  headerBg: '#050507',
+  bodyBg: 'transparent',
+  headerBg: 'transparent',
   headerColor: '#ffffff',
-  footerBg: '#000',
-  siderBg: '#050507',
-  triggerBg: '#1a1a1e',
+  footerBg: 'transparent',
+  siderBg: 'rgba(16, 16, 19, 0.78)',
+  triggerBg: '#101013',
   triggerColor: '#ffffff',
 };
 const DARK_MENU_TOKENS = {
-  darkItemBg: '#15161a',
-  darkSubMenuItemBg: '#1a1b1f',
-  darkPopupBg: '#23252b',
+  darkItemBg: 'transparent',
+  darkSubMenuItemBg: 'rgba(255, 255, 255, 0.02)',
+  darkPopupBg: '#161A24',
+  itemBorderRadius: 8,
+  itemSelectedBg: 'rgba(76, 141, 255, 0.18)',
+  itemSelectedColor: '#DCE6FF',
 };
 const ULTRA_DARK_MENU_TOKENS = {
-  darkItemBg: '#050507',
-  darkSubMenuItemBg: '#000',
-  darkPopupBg: '#101013',
+  darkItemBg: 'transparent',
+  darkSubMenuItemBg: 'rgba(255, 255, 255, 0.02)',
+  darkPopupBg: '#1A1A1E',
+  itemBorderRadius: 8,
+  itemSelectedBg: 'rgba(76, 141, 255, 0.2)',
+  itemSelectedColor: '#DCE6FF',
 };
 const DARK_CARD_TOKENS = {
-  colorBorderSecondary: 'rgba(255, 255, 255, 0.06)',
+  colorBorderSecondary: 'rgba(255, 255, 255, 0.08)',
+  borderRadiusLG: 16,
 };
 const ULTRA_DARK_CARD_TOKENS = {
-  colorBorderSecondary: 'rgba(255, 255, 255, 0.04)',
+  colorBorderSecondary: 'rgba(255, 255, 255, 0.05)',
+  borderRadiusLG: 16,
 };
 const STATISTIC_TOKENS = {
   contentFontSize: 17,
@@ -96,6 +119,21 @@ const LIGHT_BUTTON_TOKENS = {
   colorPrimary: '#0958d9',
   colorPrimaryHover: '#2468e5',
   colorPrimaryActive: '#073ea8',
+};
+
+// Liquid Glass 2.0 light palette: a #FAFBFC canvas with translucent white cards.
+// It is declared after the contrast tokens because it spreads them.
+const LIGHT_TOKENS = {
+  ...LIGHT_CONTRAST_TOKENS,
+  colorBgBase: '#FAFBFC',
+  colorBgLayout: '#FAFBFC',
+  colorBgContainer: 'rgba(255, 255, 255, 0.82)',
+  colorBgElevated: 'rgba(255, 255, 255, 0.96)',
+  colorBorder: 'rgba(15, 23, 42, 0.08)',
+  colorBorderSecondary: 'rgba(15, 23, 42, 0.08)',
+  borderRadius: 12,
+  borderRadiusLG: 16,
+  borderRadiusSM: 8,
 };
 
 // hashed:false drops the `:where(.css-<hash>)` wrapper antd puts around every
@@ -117,10 +155,29 @@ export function buildAntdThemeConfig(isDark: boolean, isUltra: boolean): ThemeCo
     return {
       ...SHARED_STYLE_CONFIG,
       algorithm: antdTheme.defaultAlgorithm,
-      token: LIGHT_CONTRAST_TOKENS,
+      token: LIGHT_TOKENS,
       components: {
         Statistic: STATISTIC_TOKENS,
-        Button: LIGHT_BUTTON_TOKENS,
+        Card: { borderRadiusLG: 16 },
+        Layout: {
+          bodyBg: 'transparent',
+          headerBg: 'transparent',
+          siderBg: 'rgba(255, 255, 255, 0.82)',
+          triggerBg: 'rgba(255, 255, 255, 0.9)',
+        },
+        Menu: {
+          itemBg: 'transparent',
+          subMenuItemBg: 'rgba(15, 23, 42, 0.02)',
+          itemBorderRadius: 8,
+          itemSelectedBg: 'rgba(9, 88, 217, 0.1)',
+          itemSelectedColor: '#0958d9',
+        },
+        Table: { borderRadiusLG: 12, headerBg: 'transparent' },
+        Input: { borderRadius: 8 },
+        Select: { borderRadius: 8 },
+        Button: { ...LIGHT_BUTTON_TOKENS, borderRadius: 8 },
+        Drawer: { colorBgElevated: 'rgba(255, 255, 255, 0.9)' },
+        Modal: { contentBg: 'rgba(255, 255, 255, 0.94)' },
       },
     };
   }
@@ -133,6 +190,12 @@ export function buildAntdThemeConfig(isDark: boolean, isUltra: boolean): ThemeCo
       Menu: isUltra ? ULTRA_DARK_MENU_TOKENS : DARK_MENU_TOKENS,
       Card: isUltra ? ULTRA_DARK_CARD_TOKENS : DARK_CARD_TOKENS,
       Statistic: STATISTIC_TOKENS,
+      Table: { borderRadiusLG: 12, headerBg: 'transparent', colorBgContainer: 'transparent' },
+      Input: { borderRadius: 8 },
+      Select: { borderRadius: 8 },
+      Button: { borderRadius: 8 },
+      Drawer: { colorBgElevated: isUltra ? 'rgba(16, 16, 19, 0.86)' : 'rgba(18, 21, 30, 0.82)' },
+      Modal: { contentBg: isUltra ? 'rgba(16, 16, 19, 0.9)' : 'rgba(18, 21, 30, 0.88)' },
     },
   };
 }

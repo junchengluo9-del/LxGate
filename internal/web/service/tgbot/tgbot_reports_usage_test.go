@@ -289,7 +289,7 @@ func TestUsageEmailArgumentDoesNotLeakAnotherClient(t *testing.T) {
 // all, several times per client, so the list cost its length times the inbound's.
 func TestClientUsageDoesNotLoadTheInboundPerClient(t *testing.T) {
 	sent := recordingBotServer(t)
-	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lxgate.db"))
 	db := database.GetDB()
 
 	const owned = 40

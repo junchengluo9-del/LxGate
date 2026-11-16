@@ -126,7 +126,9 @@
     "openMenu": "打开菜单",
     "pinSidebar": "固定侧边栏",
     "unpinSidebar": "取消固定侧边栏",
-    "subFormats": "Sub Formats"
+    "subFormats": "Sub Formats",
+    "vpngate": "VPNGate 出口",
+    "system": "系统与更新"
   },
   "pages": {
     "login": {
@@ -158,7 +160,7 @@
       "xrayUpdates": "Xray 更新",
       "xraySwitchClickDesk": "请谨慎选择，因为较旧版本可能与当前配置不兼容",
       "updatePanel": "更新面板",
-      "panelUpdateDesc": "这将把 Lx-ui 更新到最新版本并重启面板服务。",
+      "panelUpdateDesc": "这将把 LxGate 更新到最新版本并重启面板服务。",
       "currentPanelVersion": "当前面板版本",
       "latestPanelVersion": "最新面板版本",
       "panelUpToDate": "面板已是最新",
@@ -222,10 +224,10 @@
       "xraySwitchVersionDialogDesc": "这将把 Xray 版本更改为 #version#。",
       "xraySwitchVersionPopover": "Xray 更新成功",
       "panelUpdateDialog": "您确定要更新面板吗？",
-      "panelUpdateDialogDesc": "这将把 Lx-ui 更新到 #version# 并重启面板服务。",
+      "panelUpdateDialogDesc": "这将把 LxGate 更新到 #version# 并重启面板服务。",
       "panelUpdateStartedPopover": "已开始更新面板",
       "panelUpdateFailedTitle": "面板更新失败",
-      "panelUpdateFailedDesc": "更新未成功完成。请检查服务器日志，或在命令行运行「lx-ui update」。",
+      "panelUpdateFailedDesc": "更新未成功完成。请检查服务器日志，或在命令行运行「lxgate update」。",
       "panelUpdateUnknownTitle": "无法确认更新是否已完成",
       "panelUpdateUnknownDesc": "面板未能及时返回结果。请刷新页面查看当前版本，或检查服务器日志。",
       "geofileUpdateDialog": "您确定要更新地理文件吗？",
@@ -891,7 +893,7 @@
       "deleteHwidConfirm": "移除此设备？下次获取订阅时它将需要重新注册。",
       "hwidDeleted": "设备已移除。",
       "clearHwidsConfirm": "移除所有已注册的设备？每台设备在下次获取订阅时都需要重新注册。",
-      "limitIpFail2banMissing": "未安装 Fail2ban，无法实施 IP 限制。请从 lx-ui 命令行菜单安装 Fail2ban 以启用此选项。",
+      "limitIpFail2banMissing": "未安装 Fail2ban，无法实施 IP 限制。请从 lxgate 命令行菜单安装 Fail2ban 以启用此选项。",
       "limitIpFail2banWindows": "Windows 上不支持 Fail2ban，无法实施 IP 限制。",
       "limitIpDisabled": "此服务器已禁用 IP 限制功能。",
       "password": "密码",
@@ -1359,7 +1361,7 @@
       "subAnnounce": "公告",
       "subAnnounceDesc": "VPN 客户端中显示的公告文本。支持客户端身份令牌：{{EMAIL}}、{{ID}}、{{SHORT_ID}}、{{SUB_ID}}、{{TELEGRAM_ID}}。",
       "subThemeDir": "订阅主题目录",
-      "subThemeDirDesc": "包含自定义订阅页面模板 (index.html/sub.html) 的文件夹的绝对路径（例如 /etc/lx-ui/sub_templates/my-theme/）。留空则使用默认页面。",
+      "subThemeDirDesc": "包含自定义订阅页面模板 (index.html/sub.html) 的文件夹的绝对路径（例如 /etc/lxgate/sub_templates/my-theme/）。留空则使用默认页面。",
       "subThemeDirDocs": "模板指南 ↗",
       "subEnableRouting": "启用路由",
       "happLinkEnable": "加密订阅链接",
@@ -2538,6 +2540,115 @@
         "badVlessRoute": "请输入 0 到 65535 之间的单个数字"
       },
       "dragToReorder": "拖动以重新排列 {name}"
+    },
+    "vpngate": {
+      "statusCapsule": "面板状态",
+      "statusUnknown": "未知",
+      "connecting": "正在连接…",
+      "connected": "已连接",
+      "disconnected": "已断开",
+      "idle": "空闲",
+      "unknownCountry": "出口未知",
+      "toLight": "切换到浅色模式",
+      "toDark": "切换到深色模式",
+      "xrayStatusHint": "Xray 内核状态 —— 打开概览",
+      "exitHint": "实时 VPNGate 出口 —— 打开 VPNGate 页面",
+      "unavailableTitle": "当前主机无法运行 VPNGate 引擎",
+      "unavailableHint": "请安装 python3 与 openvpn；或设置 LXGATE_VPNGATE_ENABLED=0 隐藏此页面。",
+      "engineErrorTitle": "引擎健康检查没有响应",
+      "tiles": {
+        "engine": "引擎",
+        "exit": "出口",
+        "proxy": "本地代理",
+        "xray": "Xray 出站",
+        "nodes": "已缓存 {count} 个节点",
+        "restarts": "重启 {count} 次"
+      },
+      "routingTitle": "路由策略",
+      "mode": "模式",
+      "country": "国家/地区",
+      "countryPlaceholder": "选择国家/地区",
+      "ipType": "出口 IP 类型",
+      "favFallback": "收藏节点失败时自动降级",
+      "applyRouting": "应用路由",
+      "routingHint": "切换模式或节点不会改变本地代理端口，因此指向 vpngate-out 的 Xray 出站无需重启。",
+      "modes": {
+        "auto": "智能自动",
+        "fixed_region": "固定国家",
+        "fixed_ip": "固定节点",
+        "favorites": "收藏节点"
+      },
+      "ipTypes": {
+        "all": "不限",
+        "residential": "住宅 IP",
+        "hosting": "机房 IP"
+      },
+      "refreshNodes": "更新节点",
+      "refreshHint": "重新拉取 VPNGate 候选节点并测速",
+      "fullCheck": "完整检测",
+      "disconnect": "断开连接",
+      "disconnectHint": "断开隧道并停止自动重连",
+      "nodesTitle": "出口节点",
+      "nodesLoading": "正在拉取并并发测速候选节点…",
+      "nodesEmpty": "暂无节点，点击“更新节点”开始拉取。",
+      "filterPlaceholder": "筛选节点",
+      "testSelected": "测速 {count} 个",
+      "logsTitle": "实时日志",
+      "logsEmpty": "今天暂无日志。",
+      "xrayBindTitle": "Xray 出站",
+      "xrayBindHint": "一键注册名为 vpngate-out 的 socks 出站，指向本地代理。在路由规则中对该 tag 分流即可走 VPNGate。",
+      "bindOutbound": "注册 vpngate-out",
+      "rebindOutbound": "重新绑定 vpngate-out",
+      "unbindOutbound": "移除出站",
+      "notBound": "未绑定",
+      "columns": {
+        "country": "国家",
+        "host": "主机",
+        "latency": "延迟",
+        "score": "评分",
+        "sessions": "会话数",
+        "active": "当前"
+      },
+      "connect": "连接",
+      "toasts": {
+        "actionDone": "已执行",
+        "disconnected": "已断开隧道"
+      }
+    },
+    "system": {
+      "updateAvailable": "有可用更新",
+      "updateAvailableHint": "LxGate v{version} 已发布",
+      "upToDate": "已是最新",
+      "channel": "通道：{channel}",
+      "latest": "最新 v{version}",
+      "checkAgain": "重新检查",
+      "updateNow": "立即更新",
+      "showCommand": "如何更新",
+      "checkFailed": "无法访问 GitHub Releases",
+      "dockerHint": "当前以 Docker 运行，请在宿主机拉取新镜像完成更新。",
+      "updateRunning": "更新进行中",
+      "changelogTitle": "更新日志",
+      "noChangelog": "暂无发布说明。",
+      "viewRelease": "查看发布页",
+      "infoTitle": "安装信息",
+      "preserveHint": "更新只替换程序本身：面板数据库与 vpngate_data 均会保留。",
+      "checkedAt": "检查时间 {time}",
+      "noUpdateHint": "当前已是最新版本。",
+      "fields": {
+        "version": "版本",
+        "repo": "代码仓库",
+        "commit": "构建提交",
+        "buildDate": "构建时间",
+        "dbPath": "面板数据库",
+        "vpngateData": "VPNGate 数据",
+        "mode": "部署方式",
+        "native": "原生服务",
+        "updateCommand": "更新命令",
+        "none": "无"
+      },
+      "toasts": {
+        "updateStarted": "已开始更新"
+      }
     }
   },
   "tgbot": {
@@ -2581,7 +2692,7 @@
       "report": "🕰 定时报告：{{ .RunTime }}\r\n",
       "datetime": "⏰ 日期时间：{{ .DateTime }}\r\n",
       "hostname": "💻 主机: {{ .Hostname }}\r\n",
-      "version": "🚀 Lx-ui 版本：{{ .Version }}\r\n",
+      "version": "🚀 LxGate 版本：{{ .Version }}\r\n",
       "xrayVersion": "📡 Xray 版本: {{ .XrayVersion }}\r\n",
       "ipv6": "🌐 IPv6: {{ .IPv6 }}\r\n",
       "ipv4": "🌐 IPv4: {{ .IPv4 }}\r\n",
@@ -2788,10 +2899,10 @@
   },
   "discord": {
     "test": {
-      "title": "lx-ui Discord 通知测试",
+      "title": "lxgate Discord 通知测试",
       "body": "这是一条测试通知，确认 Discord 通知已正确配置。"
     },
-    "footer": "lx-ui 面板",
+    "footer": "lxgate 面板",
     "fields": {
       "panelVersion": "面板版本",
       "xrayCore": "Xray 核心",
@@ -2826,13 +2937,13 @@
       "loginFailed": "登录失败"
     },
     "report": {
-      "title": "📊 lx-ui 状态报告",
+      "title": "📊 lxgate 状态报告",
       "summary": "**{{ .Host }}** 的服务器与代理定期状态报告",
-      "footer": "lx-ui 定时报告 • 计划：{{ .RunTime }}"
+      "footer": "lxgate 定时报告 • 计划：{{ .RunTime }}"
     },
     "commands": {
-      "helpTitle": "🤖 lx-ui Discord 机器人命令",
-      "helpDescription": "用于监控和管理 lx-ui 服务器的可用命令：",
+      "helpTitle": "🤖 lxgate Discord 机器人命令",
+      "helpDescription": "用于监控和管理 lxgate 服务器的可用命令：",
       "helpStatus": "显示系统负载、内存、CPU、连接数和在线用户",
       "helpReport": "生成完整状态报告（如已配置则附带数据库备份）",
       "helpBackup": "立即发送数据库备份文件",
@@ -2840,10 +2951,10 @@
       "helpInbounds": "列出所有已配置的入站及其端口和客户端统计",
       "helpRestart": "重启 Xray 核心",
       "helpHelp": "显示此可用命令列表",
-      "statusTitle": "⚡ lx-ui 服务器状态",
+      "statusTitle": "⚡ lxgate 服务器状态",
       "statusDescription": "**{{ .Host }}** 的当前运行指标",
       "backupTitle": "🗄️ 数据库备份",
-      "backupDescription": "lx-ui 备份生成于 `{{ .Time }}`",
+      "backupDescription": "lxgate 备份生成于 `{{ .Time }}`",
       "backupUnavailable": "❌ 备份服务不可用",
       "backupFailed": "❌ 读取数据库备份失败：{{ .Error }}",
       "usageHint": "⚠️ 用法：`!usage <email>` 或 `/usage <email>`",

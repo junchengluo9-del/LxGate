@@ -33,7 +33,7 @@ type InboundProvider interface {
 func (s *DiscordService) BuildReport(ctx context.Context, server ServerProvider, inbound InboundProvider) (MessagePayload, []FileAttachment, error) {
 	hostname, _ := os.Hostname()
 	if hostname == "" {
-		hostname = "lx-ui"
+		hostname = "lxgate"
 	}
 
 	var status *service.Status
@@ -173,7 +173,7 @@ func (s *DiscordService) BuildReport(ctx context.Context, server ServerProvider,
 		} else if len(dbData) > 0 {
 			filename := server.BackupFilename("")
 			if filename == "" {
-				filename = "lx-ui.db"
+				filename = "lxgate.db"
 			}
 			files = append(files, FileAttachment{
 				Filename: filename,

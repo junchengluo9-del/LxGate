@@ -6,7 +6,7 @@ import (
 )
 
 func TestSelfUpdateRefusesPlaceholderRepo(t *testing.T) {
-	t.Setenv("LXUI_REPO", "<ORG>/Lx-ui") // lxui:keep
+	t.Setenv("LXGATE_REPO", "<ORG>/LxGate") // lxgate:keep
 	if _, err := fetchPanelRelease(""); !errors.Is(err, errReleaseRepoNotConfigured) {
 		t.Fatalf("fetchPanelRelease err = %v, want errReleaseRepoNotConfigured", err)
 	}
@@ -16,8 +16,8 @@ func TestSelfUpdateRefusesPlaceholderRepo(t *testing.T) {
 }
 
 func TestPanelUpdaterURLFollowsRepo(t *testing.T) {
-	t.Setenv("LXUI_REPO", "acme/Lx-ui")
-	if got, want := panelUpdaterURL(), "https://raw.githubusercontent.com/acme/Lx-ui/main/update.sh"; got != want {
+	t.Setenv("LXGATE_REPO", "acme/LxGate")
+	if got, want := panelUpdaterURL(), "https://raw.githubusercontent.com/acme/LxGate/main/update.sh"; got != want {
 		t.Fatalf("panelUpdaterURL() = %q, want %q", got, want)
 	}
 }

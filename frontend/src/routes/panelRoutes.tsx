@@ -9,8 +9,10 @@ import {
   ImportOutlined,
   SettingOutlined,
   SwapOutlined,
+  SyncOutlined,
   TagsOutlined,
   TeamOutlined,
+  ThunderboltOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
 
@@ -23,6 +25,8 @@ const HostsPage = lazy(() => import('@/pages/hosts/HostsPage'));
 const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'));
 const XrayPage = lazy(() => import('@/pages/xray/XrayPage'));
 const ApiDocsPage = lazy(() => import('@/pages/api-docs/ApiDocsPage'));
+const VPNGatePage = lazy(() => import('@/pages/vpngate/VPNGatePage'));
+const SystemPage = lazy(() => import('@/pages/system/SystemPage'));
 
 export interface PanelRoute {
   path: string;
@@ -40,10 +44,12 @@ export const PANEL_ROUTES: PanelRoute[] = [
   { path: '/groups', titleKey: 'menu.groups', icon: TagsOutlined, component: GroupsPage },
   { path: '/nodes', titleKey: 'menu.nodes', icon: ClusterOutlined, component: NodesPage },
   { path: '/hosts', titleKey: 'menu.hosts', icon: GlobalOutlined, component: HostsPage },
+  { path: '/vpngate', titleKey: 'menu.vpngate', icon: ThunderboltOutlined, component: VPNGatePage },
   { path: '/outbound', titleKey: 'menu.outbounds', icon: ExportOutlined, component: XrayPage },
   { path: '/routing', titleKey: 'menu.routing', icon: SwapOutlined, component: XrayPage },
   { path: '/settings', titleKey: 'menu.settings', icon: SettingOutlined, component: SettingsPage },
   { path: '/xray', titleKey: 'menu.xray', icon: ToolOutlined, component: XrayPage },
+  { path: '/system', titleKey: 'menu.system', icon: SyncOutlined, component: SystemPage },
   { path: '/api-docs', titleKey: 'menu.apiDocs', icon: ApiOutlined, component: ApiDocsPage },
 ];
 

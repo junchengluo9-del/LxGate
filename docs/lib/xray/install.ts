@@ -1,4 +1,4 @@
-// Pure builders for lx-ui install commands (script + Docker). No React/DOM.
+// Pure builders for lxgate install commands (script + Docker). No React/DOM.
 
 export type InstallMethod = 'script' | 'docker';
 
@@ -11,8 +11,8 @@ export interface InstallOptions {
   webBasePath: string;
 }
 
-const REPO_RAW = 'https://raw.githubusercontent.com/junchengluo9-del/Lx-ui/main/install.sh';
-const IMAGE = 'ghcr.io/junchengluo9-del/lx-ui:latest';
+const REPO_RAW = 'https://raw.githubusercontent.com/junchengluo9-del/LxGate/main/install.sh';
+const IMAGE = 'ghcr.io/junchengluo9-del/lxgate:latest';
 
 function isLatest(version: string): boolean {
   const v = version.trim().toLowerCase();
@@ -39,11 +39,11 @@ export function buildDockerRun(options: InstallOptions): string {
   if (options.panelPort.trim()) lines.push(`  -e XUI_PORT=${options.panelPort.trim()}`);
   if (options.webBasePath.trim())
     lines.push(`  -e XUI_INIT_WEB_BASE_PATH=${options.webBasePath.trim()}`);
-  lines.push(`  -v $PWD/db/:/etc/lx-ui/`);
+  lines.push(`  -v $PWD/db/:/etc/lxgate/`);
   lines.push(`  -v $PWD/cert/:/root/cert/`);
   lines.push(`  --network=host`);
   lines.push(`  --restart=unless-stopped`);
-  lines.push(`  --name lx-ui`);
+  lines.push(`  --name lxgate`);
   lines.push(`  ${IMAGE}`);
   return lines.join(' \\\n');
 }
@@ -60,11 +60,11 @@ export function buildDockerCompose(options: InstallOptions): string {
 
   return [
     `services:`,
-    `  lx-ui:`,
+    `  lxgate:`,
     `    image: ${IMAGE}`,
-    `    container_name: lx-ui`,
+    `    container_name: lxgate`,
     `    volumes:`,
-    `      - ./db/:/etc/lx-ui/`,
+    `      - ./db/:/etc/lxgate/`,
     `      - ./cert/:/root/cert/`,
     `    environment:`,
     ...env,

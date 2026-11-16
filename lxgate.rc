@@ -1,15 +1,15 @@
 #!/sbin/openrc-run
 
-command="/usr/local/lx-ui/lx-ui"
+command="/usr/local/lxgate/lxgate"
 command_background=true
-pidfile="/run/lx-ui.pid"
-description="lx-ui Service"
-procname="lx-ui"
+pidfile="/run/lxgate.pid"
+description="lxgate Service"
+procname="lxgate"
 depend() {
     need net
 }
 start_pre(){
-    cd /usr/local/lx-ui
+    cd /usr/local/lxgate
 }
 reload() {
   ebegin "Reloading ${RC_SVCNAME}"

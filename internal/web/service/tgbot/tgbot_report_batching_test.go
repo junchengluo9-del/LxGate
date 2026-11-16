@@ -63,7 +63,7 @@ func seedReportClients(t *testing.T, remark string, emails []string) {
 
 func initReportDB(t *testing.T) *Tgbot {
 	t.Helper()
-	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lxgate.db"))
 
 	origRunning := isRunning
 	t.Cleanup(func() { isRunning = origRunning })

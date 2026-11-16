@@ -172,7 +172,7 @@ func TestUpdateXray(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dbDir := t.TempDir()
 			t.Setenv("XUI_DB_FOLDER", dbDir)
-			dbtest.InitDB(t, filepath.Join(dbDir, "lx-ui.db"))
+			dbtest.InitDB(t, filepath.Join(dbDir, "lxgate.db"))
 			binFolder := t.TempDir()
 			t.Setenv("XUI_BIN_FOLDER", binFolder)
 			t.Setenv("XUI_LOG_FOLDER", t.TempDir())

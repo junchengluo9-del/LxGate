@@ -5,6 +5,9 @@ import 'antd/dist/reset.css';
 import '@/styles/utils.css';
 import '@/styles/page-shell.css';
 import '@/styles/page-cards.css';
+// Liquid Glass 2.0 is imported last so its body-scoped surfaces win over the
+// legacy per-page card rules.
+import '@/styles/liquid-glass.css';
 
 import { setupHttp } from '@/api/http-init';
 import { readyI18n } from '@/i18n/react';

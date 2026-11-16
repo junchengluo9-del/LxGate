@@ -238,7 +238,7 @@ func TestAddInboundRefusesPushedFieldsThatReachThisHost(t *testing.T) {
 		"tun inbound":                {Enable: true, Port: 44401, Protocol: model.Protocol("tun"), Settings: `{}`},
 		"fallback to the core API":   vless(`{"clients":[],"fallbacks":[{"dest":62789}]}`, `{"network":"tcp"}`),
 		"REALITY target on loopback": vless(`{"clients":[]}`, `{"network":"tcp","security":"reality","realitySettings":{"target":"127.0.0.1:2053"}}`),
-		"local xdrive storage":       vless(`{"clients":[]}`, `{"network":"xdrive","xdriveSettings":{"service":"local","remoteFolder":"/etc/lx-ui"}}`),
+		"local xdrive storage":       vless(`{"clients":[]}`, `{"network":"xdrive","xdriveSettings":{"service":"local","remoteFolder":"/etc/lxgate"}}`),
 	} {
 		if _, _, err := push.AddInbound(ib); err == nil {
 			t.Errorf("%s: pushed inbound accepted", name)

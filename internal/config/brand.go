@@ -7,24 +7,31 @@ import (
 	"strings"
 )
 
-// repo is the GitHub "owner/name" of the Lx-ui repository this build updates
-// from. It is written by tools/rebrand.sh from LXUI_REPO in tools/rebrand.env.
+// repo is the GitHub "owner/name" of the LxGate repository this build updates
+// from. It is written by tools/rebrand.sh from LXGATE_REPO in tools/rebrand.env.
 //
 //go:embed repo
 var repo string
 
+// display is the human-facing product name ("LxGate"). It is written by
+// tools/rebrand.sh from LXGATE_DISPLAY so the capitalisation survives a name
+// that lowercases badly (lxgate -> Lxgate).
+//
+//go:embed display
+var display string
+
 // releaseRepo optionally overrides the embedded repo at build time:
 //
-//	go build -ldflags "-X github.com/mhsanaei/3x-ui/v3/internal/config.releaseRepo=acme/Lx-ui"
+//	go build -ldflags "-X github.com/mhsanaei/3x-ui/v3/internal/config.releaseRepo=acme/LxGate"
 var releaseRepo string
 
 var repoPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9._-]{1,100}$`)
 
 // GetReleaseRepo returns the "owner/name" GitHub repository used for panel
-// self-update and release lookups. Precedence: the LXUI_REPO environment
+// self-update and release lookups. Precedence: the LXGATE_REPO environment
 // variable, the -ldflags override, then the embedded internal/config/repo.
 func GetReleaseRepo() string {
-	if v := strings.TrimSpace(os.Getenv("LXUI_REPO")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("LXGATE_REPO")); v != "" {
 		return v
 	}
 	if v := strings.TrimSpace(releaseRepo); v != "" {
@@ -34,7 +41,7 @@ func GetReleaseRepo() string {
 }
 
 // IsReleaseRepoConfigured reports whether GetReleaseRepo is a real
-// "owner/name" value. It is false while the "<ORG>/Lx-ui" placeholder is in // lxui:keep
+// "owner/name" value. It is false while the "<ORG>/LxGate" placeholder is in // lxgate:keep
 // place, so the panel never sends requests to a bogus URL.
 func IsReleaseRepoConfigured() bool {
 	return repoPattern.MatchString(GetReleaseRepo())
@@ -50,9 +57,12 @@ func GetReleasesAPIURL() string {
 	return "https://api.github.com/repos/" + GetReleaseRepo() + "/releases"
 }
 
-// GetDisplayName returns the human-facing product name, e.g. "Lx-ui" for the
-// "lx-ui" application name.
+// GetDisplayName returns the human-facing product name, e.g. "LxGate" for the
+// "lxgate" application name.
 func GetDisplayName() string {
+	if v := strings.TrimSpace(display); v != "" {
+		return v
+	}
 	n := GetName()
 	if n == "" {
 		return n

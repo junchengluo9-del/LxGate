@@ -21,6 +21,7 @@ import { useHostsQuery, type HostRecord } from '@/api/queries/useHostsQuery';
 import { useHostMutations } from '@/api/queries/useHostMutations';
 import { useInboundOptions } from '@/api/queries/useInboundOptions';
 import AppSidebar from '@/layouts/AppSidebar';
+import TopStatusBar from '@/layouts/TopStatusBar';
 import { setMessageInstance } from '@/utils/messageBus';
 import type { BulkAddHostValues } from '@/schemas/api/host';
 import HostList, { sortHosts } from './HostList';
@@ -179,6 +180,7 @@ export default function HostsPage() {
       <Layout className={pageClass}>
         <AppSidebar />
         <Layout className="content-shell">
+          <TopStatusBar />
           <Layout.Content id="content-layout" className="content-area">
             <Spin aria-live="off" spinning={!fetched} delay={200} size="large">
               {!fetched ? (

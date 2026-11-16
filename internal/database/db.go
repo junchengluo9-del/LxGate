@@ -59,7 +59,7 @@ func Dialect() string {
 	return db.Name()
 }
 
-const sqliteBackupDirPrefix = ".lx-ui-backup-"
+const sqliteBackupDirPrefix = ".lxgate-backup-"
 
 func allModels() []any {
 	return []any{

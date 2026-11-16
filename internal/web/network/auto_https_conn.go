@@ -1,4 +1,4 @@
-// Package network provides network utilities for the lx-ui web panel,
+// Package network provides network utilities for the lxgate web panel,
 // including automatic HTTP to HTTPS redirection functionality.
 package network
 

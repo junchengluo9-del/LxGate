@@ -46,7 +46,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/junchengluo9-del/Lx-ui
+        - github.com/junchengluo9-del/LxGate
   exclusions:
     paths:
       - frontend

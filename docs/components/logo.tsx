@@ -1,15 +1,15 @@
 import { cn } from '@/lib/cn';
 
-// Official lx-ui logo (media/lx-ui-{light,dark}.png from the upstream repo).
+// Official lxgate logo (media/lxgate-{light,dark}.png from the upstream repo).
 // Theme-aware via Tailwind's `dark:` variant. Pass a height class (e.g. `h-6`);
 // width scales automatically (the artwork is 2:1).
 export function Logo({ className }: { className?: string }) {
   return (
     <>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/logo-light.png" alt="lx-ui" className={cn('w-auto dark:hidden', className)} />
+      <img src="/logo-light.png" alt="lxgate" className={cn('w-auto dark:hidden', className)} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/logo-dark.png" alt="lx-ui" className={cn('hidden w-auto dark:block', className)} />
+      <img src="/logo-dark.png" alt="lxgate" className={cn('hidden w-auto dark:block', className)} />
     </>
   );
 }

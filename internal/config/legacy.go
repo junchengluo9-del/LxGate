@@ -1,11 +1,11 @@
 package config
 
-// Migration of an existing 3x-ui installation to Lx-ui.
+// Migration of an existing 3x-ui installation to LxGate.
 //
 // This file names the legacy 3x-ui paths on purpose and is excluded from
 // tools/rebrand.sh. The migration only ever COPIES: the legacy folder, its
 // database and the legacy service are left untouched, so going back to 3x-ui
-// is always possible (stop lx-ui, start x-ui).
+// is always possible (stop lxgate, start x-ui).
 
 import (
 	"errors"
@@ -35,7 +35,7 @@ var ErrLegacyServiceRunning = errors.New("the legacy 3x-ui service (x-ui.service
 func GetLegacyDBFolderPath() string { return "/etc/x-ui" }
 
 // GetLegacyEnvFilePaths returns the 3x-ui service environment files. They are
-// read as a fallback when no Lx-ui env file exists yet.
+// read as a fallback when no LxGate env file exists yet.
 func GetLegacyEnvFilePaths() []string {
 	if runtime.GOOS == "windows" {
 		return nil
@@ -55,24 +55,24 @@ type LegacyMigrationResult struct {
 // legacyMigrator holds the paths so tests can point it at temporary folders.
 type legacyMigrator struct {
 	legacyDir   string // /etc/x-ui
-	newDir      string // resolved Lx-ui data folder
-	newName     string // lx-ui
+	newDir      string // resolved LxGate data folder
+	newName     string // lxgate
 	folderFixed bool   // XUI_DB_FOLDER set explicitly: never cross folders
 	inDocker    bool
 	serviceUp   func() bool
 	now         func() time.Time
 }
 
-// MigrateLegacyData prepares the Lx-ui data folder from a 3x-ui installation.
+// MigrateLegacyData prepares the LxGate data folder from a 3x-ui installation.
 // Call it once at start-up, after the service env file is loaded and before
 // the database is opened.
 //
-//   - The data folder holds x-ui.db but no lx-ui.db (explicit XUI_DB_FOLDER,
+//   - The data folder holds x-ui.db but no lxgate.db (explicit XUI_DB_FOLDER,
 //     Windows, or a reused docker volume): x-ui.db(-wal,-shm) is copied to
-//     lx-ui.db in place.
-//   - Linux host, default folder, /etc/lx-ui has no database and no marker,
+//     lxgate.db in place.
+//   - Linux host, default folder, /etc/lxgate has no database and no marker,
 //     /etc/x-ui exists: the whole folder is copied (x-ui.db* renamed to
-//     lx-ui.db*), then the marker is written. Refused while x-ui.service runs.
+//     lxgate.db*), then the marker is written. Refused while x-ui.service runs.
 //   - Docker: a container keeps its data in a volume, so instead of copying into
 //     the container filesystem the legacy folder is used in place (the
 //     process's XUI_DB_FOLDER is set to it) and a notice asks to remount.
@@ -135,7 +135,7 @@ func (m legacyMigrator) run() (LegacyMigrationResult, error) {
 		}
 		return LegacyMigrationResult{
 			Action: "use-legacy-folder", From: m.legacyDir, To: m.legacyDir, Files: files,
-			Note: fmt.Sprintf("using the legacy data folder %s in place; change the volume mount to %s (or set LXUI_DB_FOLDER=%s)",
+			Note: fmt.Sprintf("using the legacy data folder %s in place; change the volume mount to %s (or set LXGATE_DB_FOLDER=%s)",
 				m.legacyDir, m.newDir, m.legacyDir),
 		}, nil
 	}

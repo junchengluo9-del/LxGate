@@ -16,12 +16,12 @@ var pwaAssets = map[string]pwaAsset{
 	"manifest.webmanifest": {path: "dist/manifest.webmanifest", contentType: "application/manifest+json; charset=utf-8"},
 	"pwa-register.js":      {path: "dist/pwa-register.js", contentType: "application/javascript; charset=utf-8"},
 	"service-worker.js":    {path: "dist/service-worker.js", contentType: "application/javascript; charset=utf-8"},
-	"icons/lx-ui-16.png":   {path: "dist/icons/lx-ui-16.png", contentType: "image/png"},
-	"icons/lx-ui-24.png":   {path: "dist/icons/lx-ui-24.png", contentType: "image/png"},
-	"icons/lx-ui-32.png":   {path: "dist/icons/lx-ui-32.png", contentType: "image/png"},
-	"icons/lx-ui-64.png":   {path: "dist/icons/lx-ui-64.png", contentType: "image/png"},
-	"icons/lx-ui-192.png":  {path: "dist/icons/lx-ui-192.png", contentType: "image/png"},
-	"icons/lx-ui-512.png":  {path: "dist/icons/lx-ui-512.png", contentType: "image/png"},
+	"icons/lxgate-16.png":   {path: "dist/icons/lxgate-16.png", contentType: "image/png"},
+	"icons/lxgate-24.png":   {path: "dist/icons/lxgate-24.png", contentType: "image/png"},
+	"icons/lxgate-32.png":   {path: "dist/icons/lxgate-32.png", contentType: "image/png"},
+	"icons/lxgate-64.png":   {path: "dist/icons/lxgate-64.png", contentType: "image/png"},
+	"icons/lxgate-192.png":  {path: "dist/icons/lxgate-192.png", contentType: "image/png"},
+	"icons/lxgate-512.png":  {path: "dist/icons/lxgate-512.png", contentType: "image/png"},
 }
 
 func servePWAAsset(c *gin.Context, assetName string) {

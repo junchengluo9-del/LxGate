@@ -24,7 +24,7 @@ import (
 //
 // Upstream stopped Xray, overwrote the binary and restarted; a release that
 // cannot start in the panel's environment (e.g. the systemd sandbox) left the
-// node with no proxy until someone fixed it over SSH. Lx-ui instead:
+// node with no proxy until someone fixed it over SSH. LxGate instead:
 //
 //  1. downloads and checksum-verifies the archive while Xray keeps running,
 //  2. stages the new binary next to the current one,
@@ -195,7 +195,7 @@ func sandboxHint(err error) string {
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "operation not permitted") {
 		return ""
 	}
-	return " (EPERM: under systemd this usually means the lx-ui.service sandbox (SystemCallFilter/CapabilityBoundingSet) blocked a call the new Xray needs; see docs/LX_CHANGES.md, #6871)"
+	return " (EPERM: under systemd this usually means the lxgate.service sandbox (SystemCallFilter/CapabilityBoundingSet) blocked a call the new Xray needs; see docs/LX_CHANGES.md, #6871)"
 }
 
 func trimOutput(b []byte) string {

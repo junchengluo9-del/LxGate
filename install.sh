@@ -1,17 +1,17 @@
 #!/bin/bash
 
-# >>> lx-ui identity (managed by tools/rebrand.sh; edit tools/rebrand.env) >>>
-LXUI_REPO="${LXUI_REPO:-junchengluo9-del/Lx-ui}"
-LXUI_RAW_BASE="https://raw.githubusercontent.com/${LXUI_REPO}"
-LXUI_RELEASE_BASE="https://github.com/${LXUI_REPO}/releases"
-# LXUI_* variables are canonical; the legacy XUI_* names keep working as aliases.
-# An LXUI_ value wins over the XUI_ alias of the same name.
-while IFS='=' read -r __lxui_k __lxui_v; do
-    case "$__lxui_k" in LXUI_REPO | LXUI_RAW_BASE | LXUI_RELEASE_BASE) continue ;; esac
-    export "XUI_${__lxui_k#LXUI_}=${__lxui_v}"
-done < <(env | grep -E '^LXUI_[A-Z0-9_]+=' || true)
-unset __lxui_k __lxui_v
-# <<< lx-ui identity <<<
+# >>> lxgate identity (managed by tools/rebrand.sh; edit tools/rebrand.env) >>>
+LXGATE_REPO="${LXGATE_REPO:-junchengluo9-del/LxGate}"
+LXGATE_RAW_BASE="https://raw.githubusercontent.com/${LXGATE_REPO}"
+LXGATE_RELEASE_BASE="https://github.com/${LXGATE_REPO}/releases"
+# LXGATE_* variables are canonical; the legacy XUI_* names keep working as aliases.
+# An LXGATE_ value wins over the XUI_ alias of the same name.
+while IFS='=' read -r __lxgate_k __lxgate_v; do
+    case "$__lxgate_k" in LXGATE_REPO | LXGATE_RAW_BASE | LXGATE_RELEASE_BASE) continue ;; esac
+    export "XUI_${__lxgate_k#LXGATE_}=${__lxgate_v}"
+done < <(env | grep -E '^LXGATE_[A-Z0-9_]+=' || true)
+unset __lxgate_k __lxgate_v
+# <<< lxgate identity <<<
 
 red='\033[0;31m'
 green='\033[0;32m'
@@ -19,7 +19,7 @@ blue='\033[0;34m'
 yellow='\033[0;33m'
 plain='\033[0m'
 
-xui_folder="${XUI_MAIN_FOLDER:=/usr/local/lx-ui}"
+xui_folder="${XUI_MAIN_FOLDER:=/usr/local/lxgate}"
 xui_service="${XUI_SERVICE:=/etc/systemd/system}"
 
 # check root
@@ -204,6 +204,69 @@ install_base() {
     esac
 }
 
+# LxGate's VPNGate exit is a Python sidecar that drives OpenVPN on tun0 and
+# exposes a loopback SOCKS5/HTTP proxy. The runtime deps are installed
+# best-effort: a failure here only makes the VPNGate page report "engine
+# unavailable", it never breaks the panel install itself.
+install_vpngate_stack() {
+    echo -e "${yellow}Installing the VPNGate engine runtime (python3, openvpn, iproute2)...${plain}" >&2
+    local ok=1
+    case "${release}" in
+        ubuntu | debian | armbian | raspbian)
+            apt-get install -y -q python3 openvpn iproute2 iptables >&2 || ok=0
+            ;;
+        fedora | amzn | virtuozzo | rhel | almalinux | rocky | ol)
+            dnf install -y -q python3 openvpn iproute iptables >&2 || ok=0
+            ;;
+        centos)
+            if [[ "${VERSION_ID}" =~ ^7 ]]; then
+                yum install -y -q python3 openvpn iproute iptables >&2 || ok=0
+            else
+                dnf install -y -q python3 openvpn iproute iptables >&2 || ok=0
+            fi
+            ;;
+        arch | manjaro | parch)
+            pacman -S --noconfirm --needed python openvpn iproute2 iptables-nft >&2 || ok=0
+            ;;
+        opensuse-tumbleweed | opensuse-leap)
+            zypper -q install -y python3 openvpn iproute2 iptables >&2 || ok=0
+            ;;
+        alpine)
+            apk add python3 openvpn iproute2 iptables >&2 || ok=0
+            ;;
+        *)
+            apt-get install -y -q python3 openvpn iproute2 iptables >&2 || ok=0
+            ;;
+    esac
+    mkdir -p /opt/lxgate/vpngate_data
+    chmod 750 /opt/lxgate/vpngate_data 2> /dev/null || true
+    if [[ "$ok" == "1" ]]; then
+        echo -e "${green}VPNGate runtime installed.${plain}" >&2
+    else
+        echo -e "${yellow}Some VPNGate packages could not be installed. The panel still works; the VPNGate page will report the engine as unavailable until python3 and openvpn are present.${plain}" >&2
+    fi
+}
+
+# The release archive ships vpngate/ next to the binary. When the archive does
+# not (older tag, source install), fetch the engine straight from the repository
+# so the feature works without a rebuild.
+install_vpngate_engine() {
+    local dest="/opt/lxgate/vpngate"
+    mkdir -p "$dest"
+    if [[ -f "$dest/vpngate_manager.py" && -f "$dest/proxy_server.py" && -f "$dest/vpn_utils.py" ]]; then
+        return 0
+    fi
+    local base="${LXGATE_RAW_BASE}/main/vpngate"
+    local f
+    for f in vpngate_manager.py proxy_server.py vpn_utils.py; do
+        if ! curl -fsSL "${base}/${f}" -o "${dest}/${f}"; then
+            echo -e "${yellow}Could not fetch ${f} from ${base}; the VPNGate engine will be unavailable.${plain}" >&2
+            return 1
+        fi
+    done
+    echo -e "${green}VPNGate engine installed in ${dest}.${plain}" >&2
+}
+
 gen_random_string() {
     local length="$1"
     openssl rand -base64 $((length * 2)) \
@@ -231,12 +294,12 @@ prompt_or_default() {
 # spaces, quotes, $(...) or backticks is shell-escaped and the file stays safely
 # source-able (consumers do '. install-result.env'). For the alphanumeric random
 # values gen_random_string emits, %q is a no-op. This is a DIFFERENT file from the
-# Postgres env file (/etc/default/lx-ui).
+# Postgres env file (/etc/default/lxgate).
 write_install_result() {
     local u="$1" p="$2" port="$3" wbp="$4" scheme="$5" host="$6" token="$7" dbtype="$8"
-    local result_file="/etc/lx-ui/install-result.env"
+    local result_file="/etc/lxgate/install-result.env"
     local url_host="${host:-SERVER_IP_UNKNOWN}"
-    install -d -m 700 /etc/lx-ui 2> /dev/null
+    install -d -m 700 /etc/lxgate 2> /dev/null
     local prev_umask
     prev_umask=$(umask)
     umask 077
@@ -273,7 +336,7 @@ pg_ensure_hba_password_auth() {
     local tmp
     tmp=$(mktemp) || return 1
     {
-        echo "# Added by lx-ui: allow password logins for the panel database."
+        echo "# Added by lxgate: allow password logins for the panel database."
         echo "host    ${pg_db}    all    127.0.0.1/32    md5"
         echo "host    ${pg_db}    all    ::1/128         md5"
         cat "${hba_file}"
@@ -538,7 +601,7 @@ setup_ssl_certificate() {
 
     if [ $? -ne 0 ]; then
         echo -e "${yellow}Failed to issue certificate for ${domain}${plain}"
-        echo -e "${yellow}Please ensure port 80 is open and try again later with: lx-ui${plain}"
+        echo -e "${yellow}Please ensure port 80 is open and try again later with: lxgate${plain}"
         rm -rf ~/.acme.sh/${domain} ~/.acme.sh/${domain}_ecc 2> /dev/null
         rm -rf "$certPath" 2> /dev/null
         return 1
@@ -548,7 +611,7 @@ setup_ssl_certificate() {
     ~/.acme.sh/acme.sh --installcert --force -d ${domain} \
         --key-file /root/cert/${domain}/privkey.pem \
         --fullchain-file /root/cert/${domain}/fullchain.pem \
-        --reloadcmd "systemctl restart lx-ui" > /dev/null 2>&1
+        --reloadcmd "systemctl restart lxgate" > /dev/null 2>&1
 
     if [ $? -ne 0 ]; then
         echo -e "${yellow}Failed to install certificate${plain}"
@@ -566,7 +629,7 @@ setup_ssl_certificate() {
     local webKeyFile="/root/cert/${domain}/privkey.pem"
 
     if [[ -f "$webCertFile" && -f "$webKeyFile" ]]; then
-        ${xui_folder}/lx-ui cert -webCert "$webCertFile" -webCertKey "$webKeyFile" > /dev/null 2>&1
+        ${xui_folder}/lxgate cert -webCert "$webCertFile" -webCertKey "$webKeyFile" > /dev/null 2>&1
         echo -e "${green}SSL certificate installed and configured successfully!${plain}"
         return 0
     else
@@ -617,7 +680,7 @@ setup_ip_certificate() {
     fi
 
     # Set reload command for auto-renewal (add || true so it doesn't fail during first install)
-    local reloadCmd="systemctl restart lx-ui 2>/dev/null || rc-service lx-ui restart 2>/dev/null || true"
+    local reloadCmd="systemctl restart lxgate 2>/dev/null || rc-service lxgate restart 2>/dev/null || true"
 
     # Choose port for HTTP-01 listener (default 80, prompt override)
     local WebPort=""
@@ -715,7 +778,7 @@ setup_ip_certificate() {
 
     # Configure panel to use the certificate
     echo -e "${green}Setting certificate paths for the panel...${plain}"
-    ${xui_folder}/lx-ui cert -webCert "${certDir}/fullchain.pem" -webCertKey "${certDir}/privkey.pem"
+    ${xui_folder}/lxgate cert -webCert "${certDir}/fullchain.pem" -webCertKey "${certDir}/privkey.pem"
 
     if [ $? -ne 0 ]; then
         echo -e "${yellow}Warning: Could not set certificate paths automatically${plain}"
@@ -728,14 +791,14 @@ setup_ip_certificate() {
 
     echo -e "${green}IP certificate installed and configured successfully!${plain}"
     echo -e "${green}Certificate valid for ~6 days, auto-renews via acme.sh cron job.${plain}"
-    echo -e "${yellow}acme.sh will automatically renew and reload lx-ui before expiry.${plain}"
+    echo -e "${yellow}acme.sh will automatically renew and reload lxgate before expiry.${plain}"
     return 0
 }
 
 # Comprehensive manual SSL certificate issuance via acme.sh
 ssl_cert_issue() {
-    local existing_webBasePath=$(${xui_folder}/lx-ui setting -show true | grep 'webBasePath:' | awk -F': ' '{print $2}' | tr -d '[:space:]' | sed 's#^/##')
-    local existing_port=$(${xui_folder}/lx-ui setting -show true | grep 'port:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
+    local existing_webBasePath=$(${xui_folder}/lxgate setting -show true | grep 'webBasePath:' | awk -F': ' '{print $2}' | tr -d '[:space:]' | sed 's#^/##')
+    local existing_port=$(${xui_folder}/lxgate setting -show true | grep 'port:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
 
     # check for acme.sh first
     if ! command -v ~/.acme.sh/acme.sh &> /dev/null; then
@@ -828,7 +891,7 @@ ssl_cert_issue() {
 
     # Stop panel temporarily
     echo -e "${yellow}Stopping panel temporarily...${plain}"
-    systemctl stop lx-ui 2> /dev/null || rc-service lx-ui stop 2> /dev/null
+    systemctl stop lxgate 2> /dev/null || rc-service lxgate stop 2> /dev/null
 
     if [[ ${cert_exists} -eq 0 ]]; then
         # issue the certificate
@@ -838,7 +901,7 @@ ssl_cert_issue() {
         if [ $? -ne 0 ]; then
             echo -e "${red}Issuing certificate failed, please check logs.${plain}"
             rm -rf ~/.acme.sh/${domain} ~/.acme.sh/${domain}_ecc
-            systemctl start lx-ui 2> /dev/null || rc-service lx-ui start 2> /dev/null
+            systemctl start lxgate 2> /dev/null || rc-service lxgate start 2> /dev/null
             return 1
         else
             echo -e "${green}Issuing certificate succeeded, installing certificates...${plain}"
@@ -848,8 +911,8 @@ ssl_cert_issue() {
     fi
 
     # Setup reload command
-    reloadCmd="systemctl restart lx-ui || rc-service lx-ui restart"
-    echo -e "${green}Default --reloadcmd for ACME is: ${yellow}systemctl restart lx-ui || rc-service lx-ui restart${plain}"
+    reloadCmd="systemctl restart lxgate || rc-service lxgate restart"
+    echo -e "${green}Default --reloadcmd for ACME is: ${yellow}systemctl restart lxgate || rc-service lxgate restart${plain}"
     echo -e "${green}This command will run on every certificate issue and renew.${plain}"
     if [[ "$NONINTERACTIVE" == "1" ]]; then
         setReloadcmd="n"
@@ -857,17 +920,17 @@ ssl_cert_issue() {
         read -rp "Would you like to modify --reloadcmd for ACME? (y/n): " setReloadcmd
     fi
     if [[ "$setReloadcmd" == "y" || "$setReloadcmd" == "Y" ]]; then
-        echo -e "\n${green}\t1.${plain} Preset: systemctl reload nginx ; systemctl restart lx-ui"
+        echo -e "\n${green}\t1.${plain} Preset: systemctl reload nginx ; systemctl restart lxgate"
         echo -e "${green}\t2.${plain} Input your own command"
         echo -e "${green}\t0.${plain} Keep default reloadcmd"
         read -rp "Choose an option: " choice
         case "$choice" in
             1)
-                echo -e "${green}Reloadcmd is: systemctl reload nginx ; systemctl restart lx-ui${plain}"
-                reloadCmd="systemctl reload nginx ; systemctl restart lx-ui"
+                echo -e "${green}Reloadcmd is: systemctl reload nginx ; systemctl restart lxgate${plain}"
+                reloadCmd="systemctl reload nginx ; systemctl restart lxgate"
                 ;;
             2)
-                echo -e "${yellow}It's recommended to put lx-ui restart at the end${plain}"
+                echo -e "${yellow}It's recommended to put lxgate restart at the end${plain}"
                 read -rp "Please enter your custom reloadcmd: " reloadCmd
                 echo -e "${green}Reloadcmd is: ${reloadCmd}${plain}"
                 ;;
@@ -897,7 +960,7 @@ ssl_cert_issue() {
         if [[ ${cert_exists} -eq 0 ]]; then
             rm -rf ~/.acme.sh/${domain} ~/.acme.sh/${domain}_ecc
         fi
-        systemctl start lx-ui 2> /dev/null || rc-service lx-ui start 2> /dev/null
+        systemctl start lxgate 2> /dev/null || rc-service lxgate start 2> /dev/null
         return 1
     fi
 
@@ -918,7 +981,7 @@ ssl_cert_issue() {
     fi
 
     # start panel
-    systemctl start lx-ui 2> /dev/null || rc-service lx-ui start 2> /dev/null
+    systemctl start lxgate 2> /dev/null || rc-service lxgate start 2> /dev/null
 
     # Prompt user to set panel paths after successful certificate installation
     if [[ "$NONINTERACTIVE" == "1" ]]; then
@@ -931,14 +994,14 @@ ssl_cert_issue() {
         local webKeyFile="/root/cert/${domain}/privkey.pem"
 
         if [[ -f "$webCertFile" && -f "$webKeyFile" ]]; then
-            ${xui_folder}/lx-ui cert -webCert "$webCertFile" -webCertKey "$webKeyFile"
+            ${xui_folder}/lxgate cert -webCert "$webCertFile" -webCertKey "$webKeyFile"
             echo -e "${green}Certificate paths set for the panel${plain}"
             echo -e "${green}Certificate File: $webCertFile${plain}"
             echo -e "${green}Private Key File: $webKeyFile${plain}"
             echo ""
             echo -e "${green}Access URL: https://${domain}:${existing_port}/${existing_webBasePath}${plain}"
             echo -e "${yellow}Panel will restart to apply SSL certificate...${plain}"
-            systemctl restart lx-ui 2> /dev/null || rc-service lx-ui restart 2> /dev/null
+            systemctl restart lxgate 2> /dev/null || rc-service lxgate restart 2> /dev/null
         else
             echo -e "${red}Error: Certificate or private key file not found for domain: $domain.${plain}"
         fi
@@ -1037,9 +1100,9 @@ prompt_and_setup_ssl() {
 
             # Stop panel if running (port 80 needed)
             if [[ $release == "alpine" ]]; then
-                rc-service lx-ui stop > /dev/null 2>&1
+                rc-service lxgate stop > /dev/null 2>&1
             else
-                systemctl stop lx-ui > /dev/null 2>&1
+                systemctl stop lxgate > /dev/null 2>&1
             fi
 
             setup_ip_certificate "${server_ip}" "${ipv6_addr}"
@@ -1096,8 +1159,8 @@ prompt_and_setup_ssl() {
                 fi
             done
 
-            # 3.4 Apply Settings via lx-ui binary
-            ${xui_folder}/lx-ui cert -webCert "$custom_cert" -webCertKey "$custom_key" > /dev/null 2>&1
+            # 3.4 Apply Settings via lxgate binary
+            ${xui_folder}/lxgate cert -webCert "$custom_cert" -webCertKey "$custom_key" > /dev/null 2>&1
 
             # Set SSL_HOST for composing Panel URL
             if [[ -n "$custom_domain" ]]; then
@@ -1109,7 +1172,7 @@ prompt_and_setup_ssl() {
             echo -e "${green}✓ Custom certificate paths applied.${plain}"
             echo -e "${yellow}Note: You are responsible for renewing these files externally.${plain}"
 
-            systemctl restart lx-ui > /dev/null 2>&1 || rc-service lx-ui restart > /dev/null 2>&1
+            systemctl restart lxgate > /dev/null 2>&1 || rc-service lxgate restart > /dev/null 2>&1
             ;;
         4)
             echo ""
@@ -1131,7 +1194,7 @@ prompt_and_setup_ssl() {
                 read -rp "Bind the panel to 127.0.0.1 only? (recommended — forces SSH tunnel / reverse-proxy access) [y/N]: " bind_local
             fi
             if [[ "$bind_local" == "y" || "$bind_local" == "Y" ]]; then
-                ${xui_folder}/lx-ui setting -listenIP "127.0.0.1" > /dev/null 2>&1
+                ${xui_folder}/lxgate setting -listenIP "127.0.0.1" > /dev/null 2>&1
                 SSL_HOST="127.0.0.1"
                 echo -e "${green}✓ Panel bound to 127.0.0.1 only. It is now unreachable from the public internet.${plain}"
                 echo ""
@@ -1148,7 +1211,7 @@ prompt_and_setup_ssl() {
                 echo -e "${yellow}Panel will listen on all interfaces over plain HTTP. Make sure something else is terminating TLS in front of it.${plain}"
             fi
 
-            systemctl restart lx-ui > /dev/null 2>&1 || rc-service lx-ui restart > /dev/null 2>&1
+            systemctl restart lxgate > /dev/null 2>&1 || rc-service lxgate restart > /dev/null 2>&1
             echo -e "${green}✓ SSL setup skipped.${plain}"
             ;;
         *)
@@ -1160,7 +1223,7 @@ prompt_and_setup_ssl() {
 
 config_after_install() {
     local settings existing_webBasePath
-    if ! settings=$("${xui_folder}/lx-ui" setting -show true) ||
+    if ! settings=$("${xui_folder}/lxgate" setting -show true) ||
         ! existing_webBasePath=$(printf '%s\n' "$settings" | awk '
             /^get .* failed, error info:/ { failed = 1 }
             /^hasDefaultCredential: (true|false)$/ { credentials++ }
@@ -1177,7 +1240,7 @@ config_after_install() {
     local existing_hasDefaultCredential=$(printf '%s\n' "$settings" | awk '/^hasDefaultCredential: / {print $2}')
     local existing_port=$(printf '%s\n' "$settings" | awk '/^port: / {print $2}')
     # Properly detect empty cert by checking if cert: line exists and has content after it
-    local existing_cert=$(${xui_folder}/lx-ui setting -getCert true | grep 'cert:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
+    local existing_cert=$(${xui_folder}/lxgate setting -getCert true | grep 'cert:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
     local URL_lists=(
         "https://api4.ipify.org"
         "https://ipv4.icanhazip.com"
@@ -1222,7 +1285,7 @@ config_after_install() {
             local config_password="${XUI_PASSWORD:-$(gen_random_string 10)}"
             local config_port=""
 
-            local db_label="SQLite (/etc/lx-ui/lx-ui.db)"
+            local db_label="SQLite (/etc/lxgate/lxgate.db)"
             echo ""
             echo -e "${green}═══════════════════════════════════════════${plain}"
             echo -e "${green}     Database Selection                    ${plain}"
@@ -1243,13 +1306,13 @@ config_after_install() {
                 local xui_env_file
                 case "${release}" in
                     ubuntu | debian | armbian)
-                        xui_env_file="/etc/default/lx-ui"
+                        xui_env_file="/etc/default/lxgate"
                         ;;
                     arch | manjaro | parch | alpine)
-                        xui_env_file="/etc/conf.d/lx-ui"
+                        xui_env_file="/etc/conf.d/lxgate"
                         ;;
                     *)
-                        xui_env_file="/etc/sysconfig/lx-ui"
+                        xui_env_file="/etc/sysconfig/lxgate"
                         ;;
                 esac
 
@@ -1265,7 +1328,7 @@ config_after_install() {
                         fi
                         echo -e "${yellow}Installing PostgreSQL locally (non-interactive)...${plain}"
                         local pg_cred_file
-                        pg_cred_file=$(mktemp 2> /dev/null) || pg_cred_file=$(mktemp -t lx-ui-pg-creds.XXXXXXXX)
+                        pg_cred_file=$(mktemp 2> /dev/null) || pg_cred_file=$(mktemp -t lxgate-pg-creds.XXXXXXXX)
                         if [[ -n "${pg_cred_file}" ]] && xui_dsn=$(PG_CRED_FILE="${pg_cred_file}" install_postgres_local); then
                             pg_local_installed=1
                             if [[ -r "${pg_cred_file}" ]]; then
@@ -1295,7 +1358,7 @@ config_after_install() {
                     else
                         echo -e "${yellow}Installing PostgreSQL — this may take a moment...${plain}"
                         local pg_cred_file
-                        pg_cred_file=$(mktemp 2> /dev/null) || pg_cred_file=$(mktemp -t lx-ui-pg-creds.XXXXXXXX)
+                        pg_cred_file=$(mktemp 2> /dev/null) || pg_cred_file=$(mktemp -t lxgate-pg-creds.XXXXXXXX)
                         if [[ -z "${pg_cred_file}" ]]; then
                             echo -e "${red}Failed to create temporary credentials file.${plain}"
                             xui_dsn=""
@@ -1353,7 +1416,7 @@ EOF
             config_port=$(select_panel_port) || exit 1
 
             local settings_output settings_status=0
-            settings_output=$("${xui_folder}/lx-ui" setting -username "${config_username}" -password "${config_password}" -port "${config_port}" -webBasePath "${config_webBasePath}" 2>&1) || settings_status=$?
+            settings_output=$("${xui_folder}/lxgate" setting -username "${config_username}" -password "${config_password}" -port "${config_port}" -webBasePath "${config_webBasePath}" 2>&1) || settings_status=$?
             printf '%s\n' "$settings_output"
             # Released CLIs may print a settings/database error and still exit 0.
             # Require all three existing success messages before claiming success.
@@ -1377,7 +1440,7 @@ EOF
             prompt_and_setup_ssl "${config_port}" "${config_webBasePath}" "${server_ip}"
 
             # Retrieve the API token for display
-            local config_apiToken=$(${xui_folder}/lx-ui setting -getApiToken | grep -Eo 'apiToken: .+' | awk '{print $2}')
+            local config_apiToken=$(${xui_folder}/lxgate setting -getApiToken | grep -Eo 'apiToken: .+' | awk '{print $2}')
 
             # Display final credentials and access information
             echo ""
@@ -1438,7 +1501,7 @@ EOF
         else
             local config_webBasePath=$(gen_random_string 18)
             echo -e "${yellow}WebBasePath is missing or set to root. Generating a new one...${plain}"
-            ${xui_folder}/lx-ui setting -webBasePath "${config_webBasePath}"
+            ${xui_folder}/lxgate setting -webBasePath "${config_webBasePath}"
             echo -e "${green}New WebBasePath: ${config_webBasePath}${plain}"
 
             # If the panel is already installed but no certificate is configured, prompt for SSL now
@@ -1462,7 +1525,7 @@ EOF
             local config_password="${XUI_PASSWORD:-$(gen_random_string 10)}"
 
             echo -e "${yellow}Default credentials detected. Security update required...${plain}"
-            ${xui_folder}/lx-ui setting -username "${config_username}" -password "${config_password}"
+            ${xui_folder}/lxgate setting -username "${config_username}" -password "${config_password}"
             echo -e "Generated new random login credentials:"
             echo -e "###############################################"
             echo -e "${green}Username: ${config_username}${plain}"
@@ -1471,7 +1534,7 @@ EOF
 
             # Persist a machine-parseable credentials file for cloud-init / MOTD.
             local config_apiToken
-            config_apiToken=$(${xui_folder}/lx-ui setting -getApiToken | grep -Eo 'apiToken: .+' | awk '{print $2}')
+            config_apiToken=$(${xui_folder}/lxgate setting -getApiToken | grep -Eo 'apiToken: .+' | awk '{print $2}')
             : "${SSL_SCHEME:=https}"
             : "${SSL_HOST:=${server_ip}}"
             write_install_result "${config_username}" "${config_password}" "${existing_port}" \
@@ -1482,7 +1545,7 @@ EOF
 
         # Existing install: if no cert configured, prompt user for SSL setup
         # Properly detect empty cert by checking if cert: line exists and has content after it
-        existing_cert=$(${xui_folder}/lx-ui setting -getCert true | grep 'cert:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
+        existing_cert=$(${xui_folder}/lxgate setting -getCert true | grep 'cert:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
         if [[ -z "$existing_cert" ]]; then
             echo ""
             echo -e "${green}═══════════════════════════════════════════${plain}"
@@ -1497,11 +1560,11 @@ EOF
         fi
     fi
 
-    ${xui_folder}/lx-ui migrate
+    ${xui_folder}/lxgate migrate
 }
 
 # setup_fail2ban auto-installs and configures fail2ban for the IP Limit feature
-# by invoking the freshly installed lx-ui CLI. IP Limit is load-bearing on
+# by invoking the freshly installed lxgate CLI. IP Limit is load-bearing on
 # fail2ban (without it the panel disables the limitIp field and zeroes existing
 # limits), so a fresh install should make it work out of the box, just like the
 # Docker image already does. Non-fatal by design: a fail2ban failure must never
@@ -1512,23 +1575,23 @@ setup_fail2ban() {
         return 0
     fi
 
-    if [[ ! -x /usr/bin/lx-ui ]]; then
-        echo -e "${yellow}lx-ui CLI not found; skipping Fail2ban auto-setup.${plain}"
+    if [[ ! -x /usr/bin/lxgate ]]; then
+        echo -e "${yellow}lxgate CLI not found; skipping Fail2ban auto-setup.${plain}"
         return 0
     fi
 
     # Scripts older than v3.4.0 have no setup-fail2ban and exit 0 from the
     # usage banner, which would read as success here.
-    if ! grep -q '"setup-fail2ban")' /usr/bin/lx-ui; then
-        echo -e "${yellow}This lx-ui.sh predates 'lx-ui setup-fail2ban'; skipping Fail2ban auto-setup.${plain}"
+    if ! grep -q '"setup-fail2ban")' /usr/bin/lxgate; then
+        echo -e "${yellow}This lxgate.sh predates 'lxgate setup-fail2ban'; skipping Fail2ban auto-setup.${plain}"
         return 0
     fi
 
     echo -e "${green}Setting up Fail2ban for the IP Limit feature...${plain}"
-    if /usr/bin/lx-ui setup-fail2ban; then
+    if /usr/bin/lxgate setup-fail2ban; then
         echo -e "${green}Fail2ban setup complete.${plain}"
     else
-        echo -e "${yellow}Fail2ban setup did not finish; IP Limit stays disabled until you run 'lx-ui' and open the IP Limit menu. Continuing.${plain}"
+        echo -e "${yellow}Fail2ban setup did not finish; IP Limit stays disabled until you run 'lxgate' and open the IP Limit menu. Continuing.${plain}"
     fi
     return 0
 }
@@ -1569,7 +1632,7 @@ _xui_warn_unsupported_hardening() {
         fi
     done
     [[ -n "$missing" ]] || return 0
-    echo -e "${yellow}Note: systemd ${version} ignores part of the hardening in lx-ui.service; the panel still starts.${plain}"
+    echo -e "${yellow}Note: systemd ${version} ignores part of the hardening in lxgate.service; the panel still starts.${plain}"
     echo "      Not applied, needs a newer systemd: ${missing}."
     if [[ "$version" -lt 231 ]]; then
         echo "      The panel's folders stay writable through ReadWriteDirectories=, the alias this script installs."
@@ -1603,13 +1666,13 @@ _xui_service_write_paths_dropin() {
     if [[ -z "$env_file" ]]; then
         case "${release}" in
             ubuntu | debian | armbian)
-                env_file="/etc/default/lx-ui"
+                env_file="/etc/default/lxgate"
                 ;;
             arch | manjaro | parch | alpine)
-                env_file="/etc/conf.d/lx-ui"
+                env_file="/etc/conf.d/lxgate"
                 ;;
             *)
-                env_file="/etc/sysconfig/lx-ui"
+                env_file="/etc/sysconfig/lxgate"
                 ;;
         esac
     fi
@@ -1624,8 +1687,8 @@ _xui_service_write_paths_dropin() {
     # file to the panel through EnvironmentFile=, so these are the folders it
     # will actually use.
     main_folder="${XUI_MAIN_FOLDER:-${xui_folder}}"
-    db_folder="${XUI_DB_FOLDER:-/etc/lx-ui}"
-    log_folder="${XUI_LOG_FOLDER:-/var/log/lx-ui}"
+    db_folder="${XUI_DB_FOLDER:-/etc/lxgate}"
+    log_folder="${XUI_LOG_FOLDER:-/var/log/lxgate}"
     # An empty XUI_BIN_FOLDER resolves to "bin" relative to the panel's working
     # directory, which the unit sets to the main folder.
     bin_folder="${XUI_BIN_FOLDER:-bin}"
@@ -1633,7 +1696,10 @@ _xui_service_write_paths_dropin() {
         bin_folder="${main_folder%/}/${bin_folder#./}"
     fi
 
-    for path in "$db_folder" "$log_folder" "$bin_folder" "$main_folder"; do
+    # /opt/lxgate holds the embedded VPNGate engine's state (node cache, tunnel
+    # configs, logs); list it so a ProtectSystem policy that covers /opt cannot
+    # strand the engine.
+    for path in "$db_folder" "$log_folder" "$bin_folder" "$main_folder" "/opt/lxgate"; do
         [[ "$path" == /* ]] || continue
         # ReadWritePaths= is a whitespace-separated list, and a folder whose
         # name contains whitespace cannot be written into it without relying on
@@ -1661,7 +1727,7 @@ _xui_service_write_paths_dropin() {
     line="${line# }"
     [[ -n "$line" ]] || return 1
 
-    dropin_dir="${xui_service}/lx-ui.service.d"
+    dropin_dir="${xui_service}/lxgate.service.d"
     dropin="${dropin_dir}/10-xui-sandbox.conf"
     temp_file="${dropin}.tmp.$$"
 
@@ -1671,7 +1737,7 @@ _xui_service_write_paths_dropin() {
 # are lost, and the list only reflects the XUI_* variables read from
 # ${env_file} at that moment. Re-run install/update after moving a store.
 # It lists the folders the panel writes to. Put local additions in their own
-# drop-in, for example 20-lx-ui-local.conf, which nothing here touches.
+# drop-in, for example 20-lxgate-local.conf, which nothing here touches.
 [Service]
 ReadWritePaths=${line}
 ReadWriteDirectories=${line}
@@ -1679,7 +1745,7 @@ EOF
     if [[ "$(_xui_systemd_major_version)" -ge 239 ]]; then
         cat >> "$temp_file" << 'EOF'
 # @system-service needs systemd >= 239; on older versions the unknown group
-# would leave the panel with a filter it cannot start under (lx-ui.service.*).
+# would leave the panel with a filter it cannot start under (lxgate.service.*).
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
 EOF
@@ -1696,16 +1762,16 @@ EOF
     return 0
 }
 
-# Lands a systemd unit file at ${xui_service}/lx-ui.service via a temp file +
+# Lands a systemd unit file at ${xui_service}/lxgate.service via a temp file +
 # atomic mv, so a failed cp/curl or an interrupted mv never leaves a
 # truncated unit file at the live path -- systemd would then fail to parse
 # it on the next daemon-reload/start. Same pattern already used for
-# /usr/bin/lx-ui elsewhere in this script. source_is_url picks cp (from a
+# /usr/bin/lxgate elsewhere in this script. source_is_url picks cp (from a
 # file already extracted from the release tarball) vs curl (GitHub fallback).
 _install_xui_service_unit() {
     local source="$1"
     local source_is_url="$2"
-    local dest="${xui_service}/lx-ui.service"
+    local dest="${xui_service}/lxgate.service"
     local temp_file="${dest}.tmp.$$"
 
     rm -f "$temp_file"
@@ -1728,8 +1794,8 @@ _install_xui_service_unit() {
         return 1
     fi
     if ! _xui_service_write_paths_dropin; then
-        echo -e "${yellow}Warning: could not refresh ${xui_service}/lx-ui.service.d/10-xui-sandbox.conf.${plain}"
-        echo -e "${yellow}If XUI_DB_FOLDER or XUI_LOG_FOLDER points outside /etc/lx-ui and /var/log/lx-ui, the panel may not be able to write to it under ProtectSystem=full.${plain}"
+        echo -e "${yellow}Warning: could not refresh ${xui_service}/lxgate.service.d/10-xui-sandbox.conf.${plain}"
+        echo -e "${yellow}If XUI_DB_FOLDER or XUI_LOG_FOLDER points outside /etc/lxgate and /var/log/lxgate, the panel may not be able to write to it under ProtectSystem=full.${plain}"
     fi
     _xui_warn_unsupported_hardening
     return 0
@@ -1738,23 +1804,23 @@ _install_xui_service_unit() {
 # resolve_latest_tag prints the latest stable release tag. It prefers the web
 # releases/latest redirect, which is not subject to the unauthenticated API's
 # 60 req/h-per-IP limit that trips shared CI/CGNAT addresses (the install then
-# fails with "Failed to fetch lx-ui version"), and falls back to the API.
+# fails with "Failed to fetch lxgate version"), and falls back to the API.
 resolve_latest_tag() {
     local url tag
-    url=$(curl -sSLI -o /dev/null -w '%{url_effective}' --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "${LXUI_RELEASE_BASE}/latest" 2>/dev/null)
+    url=$(curl -sSLI -o /dev/null -w '%{url_effective}' --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "${LXGATE_RELEASE_BASE}/latest" 2>/dev/null)
     tag=${url##*/tag/}
     if [[ "$tag" != "$url" && -n "$tag" && "$tag" != "latest" ]]; then
         echo "$tag"
         return 0
     fi
-    curl -Ls --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "https://api.github.com/repos/${LXUI_REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
+    curl -Ls --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "https://api.github.com/repos/${LXGATE_REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
 }
 
 # dev_release_available reports whether the rolling dev-latest pre-release
 # ships an archive for this architecture (used when no stable release exists).
 dev_release_available() {
     local code
-    code=$(curl -sIL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 -o /dev/null -w '%{http_code}' "${LXUI_RELEASE_BASE}/download/dev-latest/lx-ui-linux-$(arch).tar.gz" 2> /dev/null)
+    code=$(curl -sIL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 -o /dev/null -w '%{http_code}' "${LXGATE_RELEASE_BASE}/download/dev-latest/lxgate-linux-$(arch).tar.gz" 2> /dev/null)
     [[ "${code}" == "200" ]]
 }
 
@@ -1786,7 +1852,7 @@ verify_release_checksum() {
     echo -e "${green}Checksum verified: ${actual}${plain}"
 }
 
-# Older tags predate some of these files (lx-ui.rc arrived in v2.8.4). Serving
+# Older tags predate some of these files (lxgate.rc arrived in v2.8.4). Serving
 # main's copy against an old binary is the mismatch this pinning exists to
 # prevent, so probe before anything is stopped or removed and refuse the tag.
 require_repo_files() {
@@ -1794,7 +1860,7 @@ require_repo_files() {
     shift
     [[ "${ref}" == "main" ]] && return 0
     for name in "$@"; do
-        status=$(curl -sIL --retry 3 --connect-timeout 15 -o /dev/null -w '%{http_code}' "${LXUI_RAW_BASE}/${ref}/${name}")
+        status=$(curl -sIL --retry 3 --connect-timeout 15 -o /dev/null -w '%{http_code}' "${LXGATE_RAW_BASE}/${ref}/${name}")
         if [[ "${status}" != "200" ]]; then
             echo -e "${red}${name} is not available for ${ref} (HTTP ${status})${plain}"
             echo -e "${red}Install a release that ships it, or 'dev' for the rolling build. Your existing installation has not been touched.${plain}"
@@ -1803,8 +1869,8 @@ require_repo_files() {
     done
 }
 
-install_lx-ui() {
-    cd ${xui_folder%/lx-ui}/
+install_lxgate() {
+    cd ${xui_folder%/lxgate}/
 
     # Download resources
     if [ $# == 0 ]; then
@@ -1814,28 +1880,28 @@ install_lx-ui() {
             # pre-releases): fall back to the rolling dev build when it exists
             # instead of failing outright.
             if dev_release_available; then
-                echo -e "${yellow}No stable lx-ui release found in ${LXUI_REPO}; falling back to the rolling dev build (dev-latest).${plain}"
+                echo -e "${yellow}No stable lxgate release found in ${LXGATE_REPO}; falling back to the rolling dev build (dev-latest).${plain}"
                 set -- dev-latest
             else
-                echo -e "${red}Failed to fetch lx-ui version: ${LXUI_REPO} has no stable release and no dev-latest build for linux-$(arch) (or GitHub is unreachable / rate-limited).${plain}"
-                echo -e "${red}Check ${LXUI_RELEASE_BASE} and retry, or pass an explicit tag: bash install.sh <tag>${plain}"
+                echo -e "${red}Failed to fetch lxgate version: ${LXGATE_REPO} has no stable release and no dev-latest build for linux-$(arch) (or GitHub is unreachable / rate-limited).${plain}"
+                echo -e "${red}Check ${LXGATE_RELEASE_BASE} and retry, or pass an explicit tag: bash install.sh <tag>${plain}"
                 exit 1
             fi
         fi
     fi
     if [ $# == 0 ]; then
-        echo -e "Got lx-ui latest version: ${tag_version}, beginning the installation..."
-        curl -fLR --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1 --speed-time 300 -o ${xui_folder}-linux-$(arch).tar.gz ${LXUI_RELEASE_BASE}/download/${tag_version}/lx-ui-linux-$(arch).tar.gz
+        echo -e "Got lxgate latest version: ${tag_version}, beginning the installation..."
+        curl -fLR --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1 --speed-time 300 -o ${xui_folder}-linux-$(arch).tar.gz ${LXGATE_RELEASE_BASE}/download/${tag_version}/lxgate-linux-$(arch).tar.gz
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}Downloading lx-ui failed, please be sure that your server can access GitHub ${plain}"
+            echo -e "${red}Downloading lxgate failed, please be sure that your server can access GitHub ${plain}"
             exit 1
         fi
         if [[ ! -s ${xui_folder}-linux-$(arch).tar.gz ]]; then
             rm ${xui_folder}-linux-$(arch).tar.gz -f
-            echo -e "${red}Downloaded lx-ui release archive is empty${plain}"
+            echo -e "${red}Downloaded lxgate release archive is empty${plain}"
             exit 1
         fi
-        verify_release_checksum "${LXUI_RELEASE_BASE}/download/${tag_version}/lx-ui-linux-$(arch).tar.gz" "${xui_folder}-linux-$(arch).tar.gz"
+        verify_release_checksum "${LXGATE_RELEASE_BASE}/download/${tag_version}/lxgate-linux-$(arch).tar.gz" "${xui_folder}-linux-$(arch).tar.gz"
     else
         tag_version=$1
         # The rolling dev channel ships under a fixed, non-semver tag that is
@@ -1854,21 +1920,21 @@ install_lx-ui() {
             fi
         fi
 
-        url="${LXUI_RELEASE_BASE}/download/${tag_version}/lx-ui-linux-$(arch).tar.gz"
-        echo -e "Beginning to install lx-ui ${tag_version}"
+        url="${LXGATE_RELEASE_BASE}/download/${tag_version}/lxgate-linux-$(arch).tar.gz"
+        echo -e "Beginning to install lxgate ${tag_version}"
         curl -fLR --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1 --speed-time 300 -o ${xui_folder}-linux-$(arch).tar.gz ${url}
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}Download lx-ui ${tag_version} failed, please check if the version exists ${plain}"
+            echo -e "${red}Download lxgate ${tag_version} failed, please check if the version exists ${plain}"
             exit 1
         fi
         if [[ ! -s ${xui_folder}-linux-$(arch).tar.gz ]]; then
             rm ${xui_folder}-linux-$(arch).tar.gz -f
-            echo -e "${red}Downloaded lx-ui release archive is empty${plain}"
+            echo -e "${red}Downloaded lxgate release archive is empty${plain}"
             exit 1
         fi
         verify_release_checksum "${url}" "${xui_folder}-linux-$(arch).tar.gz"
     fi
-    # lx-ui.sh, lx-ui.rc and the unit files must come from the same release as
+    # lxgate.sh, lxgate.rc and the unit files must come from the same release as
     # the binary; only the rolling dev build tracks main.
     local script_ref="${tag_version}"
     if [[ "${tag_version}" == "dev-latest" ]]; then
@@ -1876,32 +1942,32 @@ install_lx-ui() {
     fi
     # The unit files are only fetched when the release tarball lacks them, so
     # they are checked at that point instead of here.
-    local required_files=("lx-ui.sh")
-    [[ $release == "alpine" ]] && required_files+=("lx-ui.rc")
+    local required_files=("lxgate.sh")
+    [[ $release == "alpine" ]] && required_files+=("lxgate.rc")
     require_repo_files "${script_ref}" "${required_files[@]}"
-    local xui_script_temp="/usr/bin/lx-ui-temp.$$"
+    local xui_script_temp="/usr/bin/lxgate-temp.$$"
     rm -f "${xui_script_temp}"
-    curl -fLRo "${xui_script_temp}" "${LXUI_RAW_BASE}/${script_ref}/lx-ui.sh"
+    curl -fLRo "${xui_script_temp}" "${LXGATE_RAW_BASE}/${script_ref}/lxgate.sh"
     if [[ $? -ne 0 ]]; then
         rm -f "${xui_script_temp}"
-        echo -e "${red}Failed to download lx-ui.sh${plain}"
+        echo -e "${red}Failed to download lxgate.sh${plain}"
         exit 1
     fi
     if [[ ! -s "${xui_script_temp}" ]]; then
         rm -f "${xui_script_temp}"
-        echo -e "${red}Downloaded lx-ui.sh is empty${plain}"
+        echo -e "${red}Downloaded lxgate.sh is empty${plain}"
         exit 1
     fi
 
-    # Stop lx-ui service and remove old resources
+    # Stop lxgate service and remove old resources
     local custom_bin_backup=""
     if [[ -e ${xui_folder}/ ]]; then
         if [[ $release == "alpine" ]]; then
-            rc-service lx-ui stop
+            rc-service lxgate stop
         else
-            systemctl stop lx-ui
+            systemctl stop lxgate
         fi
-        # Kill any leftover mtg (MTProto) sidecars. lx-ui runs them outside its own
+        # Kill any leftover mtg (MTProto) sidecars. lxgate runs them outside its own
         # lifecycle, so on Linux a stale one can survive the stop and keep holding
         # an inbound port with an outdated secret, silently breaking new clients.
         # The freshly installed panel respawns a clean mtg per inbound on start.
@@ -1920,7 +1986,7 @@ install_lx-ui() {
         # runs out mid-copy, unlike `cp`) and keeps the snapshot under
         # /usr/local rather than a separate, possibly small/tmpfs $TMPDIR.
         if [[ -d "${xui_folder}/bin" ]]; then
-            custom_bin_backup="${xui_folder%/lx-ui}/lx-ui-bin-backup.$$"
+            custom_bin_backup="${xui_folder%/lxgate}/lxgate-bin-backup.$$"
             rm -rf "${custom_bin_backup}"
             if ! mv "${xui_folder}/bin" "${custom_bin_backup}"; then
                 custom_bin_backup=""
@@ -1936,23 +2002,23 @@ install_lx-ui() {
     fi
 
     # Extract resources and set permissions
-    tar zxvf lx-ui-linux-$(arch).tar.gz
+    tar zxvf lxgate-linux-$(arch).tar.gz
     if [[ $? -ne 0 ]]; then
-        rm lx-ui-linux-$(arch).tar.gz -f
+        rm lxgate-linux-$(arch).tar.gz -f
         rm -f "${xui_script_temp}"
-        echo -e "${red}Failed to extract the lx-ui release archive -- the previous installation has already been removed, so the panel will not start until this is fixed; try running the installer again${plain}"
+        echo -e "${red}Failed to extract the lxgate release archive -- the previous installation has already been removed, so the panel will not start until this is fixed; try running the installer again${plain}"
         exit 1
     fi
-    rm lx-ui-linux-$(arch).tar.gz -f
+    rm lxgate-linux-$(arch).tar.gz -f
 
-    cd lx-ui
-    if [[ $? -ne 0 || ! -s lx-ui ]]; then
+    cd lxgate
+    if [[ $? -ne 0 || ! -s lxgate ]]; then
         rm -f "${xui_script_temp}"
-        echo -e "${red}Extracted lx-ui archive is missing the lx-ui binary -- the previous installation has already been removed, so the panel will not start until this is fixed; try running the installer again${plain}"
+        echo -e "${red}Extracted lxgate archive is missing the lxgate binary -- the previous installation has already been removed, so the panel will not start until this is fixed; try running the installer again${plain}"
         exit 1
     fi
-    chmod +x lx-ui
-    chmod +x lx-ui.sh
+    chmod +x lxgate
+    chmod +x lxgate.sh
 
     # Check the system's architecture and rename the file accordingly.
     # The panel binary maps GOARCH=arm to "arm32" (internal/xray/process.go),
@@ -1965,7 +2031,7 @@ install_lx-ui() {
             chmod +x bin/mtg-linux-arm
         fi
     fi
-    chmod +x lx-ui bin/xray-linux-$(arch)
+    chmod +x lxgate bin/xray-linux-$(arch)
     if [[ -f bin/mtg-linux-arm ]]; then
         chmod +x bin/mtg-linux-arm
     elif [[ -f bin/mtg-linux-$(arch) ]]; then
@@ -2008,61 +2074,61 @@ install_lx-ui() {
     rm -f bin/tuic-server bin/tuic-server-* > /dev/null 2>&1 || true
     rm -rf bin/tuic > /dev/null 2>&1 || true
 
-    # Update lx-ui cli and se set permission
-    mv -f "${xui_script_temp}" /usr/bin/lx-ui
+    # Update lxgate cli and se set permission
+    mv -f "${xui_script_temp}" /usr/bin/lxgate
     if [[ $? -ne 0 ]]; then
         rm -f "${xui_script_temp}"
-        echo -e "${red}Failed to install lx-ui.sh${plain}"
+        echo -e "${red}Failed to install lxgate.sh${plain}"
         exit 1
     fi
-    chmod +x /usr/bin/lx-ui
-    mkdir -p /var/log/lx-ui
+    chmod +x /usr/bin/lxgate
+    mkdir -p /var/log/lxgate
     config_after_install
 
     # Etckeeper compatibility
     if [ -d "/etc/.git" ]; then
         if [ -f "/etc/.gitignore" ]; then
-            if ! grep -q "lx-ui/lx-ui.db" "/etc/.gitignore"; then
+            if ! grep -q "lxgate/lxgate.db" "/etc/.gitignore"; then
                 echo "" >> "/etc/.gitignore"
-                echo "lx-ui/lx-ui.db" >> "/etc/.gitignore"
-                echo -e "${green}Added lx-ui.db to /etc/.gitignore for etckeeper${plain}"
+                echo "lxgate/lxgate.db" >> "/etc/.gitignore"
+                echo -e "${green}Added lxgate.db to /etc/.gitignore for etckeeper${plain}"
             fi
         else
-            echo "lx-ui/lx-ui.db" > "/etc/.gitignore"
-            echo -e "${green}Created /etc/.gitignore and added lx-ui.db for etckeeper${plain}"
+            echo "lxgate/lxgate.db" > "/etc/.gitignore"
+            echo -e "${green}Created /etc/.gitignore and added lxgate.db for etckeeper${plain}"
         fi
     fi
 
     if [[ $release == "alpine" ]]; then
-        xui_rc_temp="/etc/init.d/lx-ui.tmp.$$"
+        xui_rc_temp="/etc/init.d/lxgate.tmp.$$"
         rm -f "${xui_rc_temp}"
-        curl -fLRo "${xui_rc_temp}" "${LXUI_RAW_BASE}/${script_ref}/lx-ui.rc"
+        curl -fLRo "${xui_rc_temp}" "${LXGATE_RAW_BASE}/${script_ref}/lxgate.rc"
         if [[ $? -ne 0 ]]; then
             rm -f "${xui_rc_temp}"
-            echo -e "${red}Failed to download lx-ui.rc${plain}"
+            echo -e "${red}Failed to download lxgate.rc${plain}"
             exit 1
         fi
         if [[ ! -s "${xui_rc_temp}" ]]; then
             rm -f "${xui_rc_temp}"
-            echo -e "${red}Downloaded lx-ui.rc is empty${plain}"
+            echo -e "${red}Downloaded lxgate.rc is empty${plain}"
             exit 1
         fi
-        mv -f "${xui_rc_temp}" /etc/init.d/lx-ui
+        mv -f "${xui_rc_temp}" /etc/init.d/lxgate
         if [[ $? -ne 0 ]]; then
             rm -f "${xui_rc_temp}"
-            echo -e "${red}Failed to install lx-ui.rc${plain}"
+            echo -e "${red}Failed to install lxgate.rc${plain}"
             exit 1
         fi
-        chmod +x /etc/init.d/lx-ui
-        rc-update add lx-ui
-        rc-service lx-ui start
+        chmod +x /etc/init.d/lxgate
+        rc-update add lxgate
+        rc-service lxgate start
     else
         # Install systemd service file
         service_installed=false
 
-        if [ -f "lx-ui.service" ]; then
-            echo -e "${green}Found lx-ui.service in extracted files, installing...${plain}"
-            if _install_xui_service_unit "lx-ui.service" "false"; then
+        if [ -f "lxgate.service" ]; then
+            echo -e "${green}Found lxgate.service in extracted files, installing...${plain}"
+            if _install_xui_service_unit "lxgate.service" "false"; then
                 service_installed=true
             fi
         fi
@@ -2070,25 +2136,25 @@ install_lx-ui() {
         if [ "$service_installed" = false ]; then
             case "${release}" in
                 ubuntu | debian | armbian)
-                    if [ -f "lx-ui.service.debian" ]; then
-                        echo -e "${green}Found lx-ui.service.debian in extracted files, installing...${plain}"
-                        if _install_xui_service_unit "lx-ui.service.debian" "false"; then
+                    if [ -f "lxgate.service.debian" ]; then
+                        echo -e "${green}Found lxgate.service.debian in extracted files, installing...${plain}"
+                        if _install_xui_service_unit "lxgate.service.debian" "false"; then
                             service_installed=true
                         fi
                     fi
                     ;;
                 arch | manjaro | parch)
-                    if [ -f "lx-ui.service.arch" ]; then
-                        echo -e "${green}Found lx-ui.service.arch in extracted files, installing...${plain}"
-                        if _install_xui_service_unit "lx-ui.service.arch" "false"; then
+                    if [ -f "lxgate.service.arch" ]; then
+                        echo -e "${green}Found lxgate.service.arch in extracted files, installing...${plain}"
+                        if _install_xui_service_unit "lxgate.service.arch" "false"; then
                             service_installed=true
                         fi
                     fi
                     ;;
                 *)
-                    if [ -f "lx-ui.service.rhel" ]; then
-                        echo -e "${green}Found lx-ui.service.rhel in extracted files, installing...${plain}"
-                        if _install_xui_service_unit "lx-ui.service.rhel" "false"; then
+                    if [ -f "lxgate.service.rhel" ]; then
+                        echo -e "${green}Found lxgate.service.rhel in extracted files, installing...${plain}"
+                        if _install_xui_service_unit "lxgate.service.rhel" "false"; then
                             service_installed=true
                         fi
                     fi
@@ -2101,18 +2167,18 @@ install_lx-ui() {
             echo -e "${yellow}Service files not found in tar.gz, downloading from GitHub...${plain}"
             case "${release}" in
                 ubuntu | debian | armbian)
-                    service_unit_url="${LXUI_RAW_BASE}/${script_ref}/lx-ui.service.debian"
+                    service_unit_url="${LXGATE_RAW_BASE}/${script_ref}/lxgate.service.debian"
                     ;;
                 arch | manjaro | parch)
-                    service_unit_url="${LXUI_RAW_BASE}/${script_ref}/lx-ui.service.arch"
+                    service_unit_url="${LXGATE_RAW_BASE}/${script_ref}/lxgate.service.arch"
                     ;;
                 *)
-                    service_unit_url="${LXUI_RAW_BASE}/${script_ref}/lx-ui.service.rhel"
+                    service_unit_url="${LXGATE_RAW_BASE}/${script_ref}/lxgate.service.rhel"
                     ;;
             esac
 
             if ! _install_xui_service_unit "$service_unit_url" "true"; then
-                echo -e "${red}Failed to install lx-ui.service from GitHub (${script_ref}) -- the release tarball did not ship one either${plain}"
+                echo -e "${red}Failed to install lxgate.service from GitHub (${script_ref}) -- the release tarball did not ship one either${plain}"
                 exit 1
             fi
             service_installed=true
@@ -2120,13 +2186,13 @@ install_lx-ui() {
 
         if [ "$service_installed" = true ]; then
             echo -e "${green}Setting up systemd unit...${plain}"
-            chown root:root ${xui_service}/lx-ui.service > /dev/null 2>&1
-            chmod 644 ${xui_service}/lx-ui.service > /dev/null 2>&1
+            chown root:root ${xui_service}/lxgate.service > /dev/null 2>&1
+            chmod 644 ${xui_service}/lxgate.service > /dev/null 2>&1
             systemctl daemon-reload
-            systemctl enable lx-ui
-            systemctl start lx-ui
+            systemctl enable lxgate
+            systemctl start lxgate
         else
-            echo -e "${red}Failed to install lx-ui.service file${plain}"
+            echo -e "${red}Failed to install lxgate.service file${plain}"
             exit 1
         fi
     fi
@@ -2135,44 +2201,44 @@ install_lx-ui() {
     # works out of the box (no-op when XUI_ENABLE_FAIL2BAN=false). Never fatal.
     setup_fail2ban
 
-    echo -e "${green}lx-ui ${tag_version}${plain} installation finished, it is running now..."
+    echo -e "${green}lxgate ${tag_version}${plain} installation finished, it is running now..."
     echo -e ""
     echo -e "┌───────────────────────────────────────────────────────┐
-│  ${blue}lx-ui control menu usages (subcommands):${plain}              │
+│  ${blue}lxgate control menu usages (subcommands):${plain}              │
 │                                                       │
-│  ${blue}lx-ui${plain}              - Admin Management Script          │
-│  ${blue}lx-ui start${plain}        - Start                            │
-│  ${blue}lx-ui stop${plain}         - Stop                             │
-│  ${blue}lx-ui restart${plain}      - Restart                          │
-│  ${blue}lx-ui status${plain}       - Current Status                   │
-│  ${blue}lx-ui settings${plain}     - Current Settings                 │
-│  ${blue}lx-ui enable${plain}       - Enable Autostart on OS Startup   │
-│  ${blue}lx-ui disable${plain}      - Disable Autostart on OS Startup  │
-│  ${blue}lx-ui log${plain}          - Check logs                       │
-│  ${blue}lx-ui banlog${plain}       - Check Fail2ban ban logs          │
-│  ${blue}lx-ui update${plain}       - Update                           │
-│  ${blue}lx-ui legacy${plain}       - Legacy version                   │
-│  ${blue}lx-ui install${plain}      - Install                          │
-│  ${blue}lx-ui uninstall${plain}    - Uninstall                        │
+│  ${blue}lxgate${plain}              - Admin Management Script          │
+│  ${blue}lxgate start${plain}        - Start                            │
+│  ${blue}lxgate stop${plain}         - Stop                             │
+│  ${blue}lxgate restart${plain}      - Restart                          │
+│  ${blue}lxgate status${plain}       - Current Status                   │
+│  ${blue}lxgate settings${plain}     - Current Settings                 │
+│  ${blue}lxgate enable${plain}       - Enable Autostart on OS Startup   │
+│  ${blue}lxgate disable${plain}      - Disable Autostart on OS Startup  │
+│  ${blue}lxgate log${plain}          - Check logs                       │
+│  ${blue}lxgate banlog${plain}       - Check Fail2ban ban logs          │
+│  ${blue}lxgate update${plain}       - Update                           │
+│  ${blue}lxgate legacy${plain}       - Legacy version                   │
+│  ${blue}lxgate install${plain}      - Install                          │
+│  ${blue}lxgate uninstall${plain}    - Uninstall                        │
 └───────────────────────────────────────────────────────┘"
 }
 
 
 # ---------------------------------------------------------------------------
-# Migration from an existing 3x-ui installation  # lxui:keep
-#   usage: install.sh --migrate-from-3x-ui [version]  # lxui:keep
+# Migration from an existing 3x-ui installation  # lxgate:keep
+#   usage: install.sh --migrate-from-3x-ui [version]  # lxgate:keep
 #
 # Copies, never moves: the legacy folder (LEGACY_DIR) stays untouched and is
-# additionally backed up to LEGACY_DIR.bak-<timestamp>. If lx-ui does not come
-# up healthy, the script stops lx-ui and restarts the legacy service
+# additionally backed up to LEGACY_DIR.bak-<timestamp>. If lxgate does not come
+# up healthy, the script stops lxgate and restarts the legacy service
 # (automatic rollback).
-# Lines marked lxui:keep name the legacy product and are skipped by
+# Lines marked lxgate:keep name the legacy product and are skipped by
 # tools/rebrand.sh.
 # ---------------------------------------------------------------------------
-LEGACY_DISPLAY="3x-ui"         # lxui:keep
-LEGACY_NAME="x-ui"             # lxui:keep
-LEGACY_DIR="/etc/x-ui"         # lxui:keep
-LXUI_MIGRATE=0
+LEGACY_DISPLAY="3x-ui"         # lxgate:keep
+LEGACY_NAME="x-ui"             # lxgate:keep
+LEGACY_DIR="/etc/x-ui"         # lxgate:keep
+LXGATE_MIGRATE=0
 _mig_ts=""
 _mig_was_active=0
 _mig_was_enabled=0
@@ -2185,10 +2251,10 @@ legacy_install_present() {
 
 migrate_rollback() {
     local rc=$?
-    [[ "${LXUI_MIGRATE}" == "1" && "${_mig_started}" == "1" && "${_mig_done}" != "1" ]] || return 0
+    [[ "${LXGATE_MIGRATE}" == "1" && "${_mig_started}" == "1" && "${_mig_done}" != "1" ]] || return 0
     echo -e "${red}Migration from ${LEGACY_DISPLAY} failed (exit ${rc}); rolling back...${plain}"
-    systemctl stop lx-ui > /dev/null 2>&1
-    systemctl disable lx-ui > /dev/null 2>&1
+    systemctl stop lxgate > /dev/null 2>&1
+    systemctl disable lxgate > /dev/null 2>&1
     if [[ "${_mig_was_enabled}" == "1" ]]; then
         systemctl enable "${LEGACY_NAME}" > /dev/null 2>&1
     fi
@@ -2196,7 +2262,7 @@ migrate_rollback() {
         systemctl start "${LEGACY_NAME}" > /dev/null 2>&1
     fi
     echo -e "${yellow}${LEGACY_DISPLAY} restored: ${LEGACY_DIR} was never modified (backup: ${LEGACY_DIR}.bak-${_mig_ts}).${plain}"
-    echo -e "${yellow}The partial Lx-ui data in /etc/lx-ui was left in place for inspection.${plain}"
+    echo -e "${yellow}The partial LxGate data in /etc/lxgate was left in place for inspection.${plain}"
     _mig_done=1
 }
 
@@ -2215,36 +2281,36 @@ migrate_from_legacy_prepare() {
     _mig_started=1
     trap migrate_rollback EXIT
 
-    echo -e "${green}Migrating ${LEGACY_DISPLAY} -> Lx-ui (backup: ${LEGACY_DIR}.bak-${_mig_ts})${plain}"
+    echo -e "${green}Migrating ${LEGACY_DISPLAY} -> LxGate (backup: ${LEGACY_DIR}.bak-${_mig_ts})${plain}"
     systemctl stop "${LEGACY_NAME}" > /dev/null 2>&1
     systemctl disable "${LEGACY_NAME}" > /dev/null 2>&1
 
     cp -a "${LEGACY_DIR}" "${LEGACY_DIR}.bak-${_mig_ts}" || exit 1
-    if [[ -e /etc/lx-ui/lx-ui.db ]]; then
-        echo -e "${yellow}/etc/lx-ui already has a database; moving it to /etc/lx-ui.pre-migrate-${_mig_ts}${plain}"
-        mv /etc/lx-ui "/etc/lx-ui.pre-migrate-${_mig_ts}" || exit 1
+    if [[ -e /etc/lxgate/lxgate.db ]]; then
+        echo -e "${yellow}/etc/lxgate already has a database; moving it to /etc/lxgate.pre-migrate-${_mig_ts}${plain}"
+        mv /etc/lxgate "/etc/lxgate.pre-migrate-${_mig_ts}" || exit 1
     fi
-    mkdir -p /etc/lx-ui || exit 1
-    cp -an "${LEGACY_DIR}/." /etc/lx-ui/ || exit 1
+    mkdir -p /etc/lxgate || exit 1
+    cp -an "${LEGACY_DIR}/." /etc/lxgate/ || exit 1
     local suf
     for suf in .db .db-wal .db-shm; do
-        if [[ -f "/etc/lx-ui/${LEGACY_NAME}${suf}" && ! -e "/etc/lx-ui/lx-ui${suf}" ]]; then
-            mv "/etc/lx-ui/${LEGACY_NAME}${suf}" "/etc/lx-ui/lx-ui${suf}" || exit 1
+        if [[ -f "/etc/lxgate/${LEGACY_NAME}${suf}" && ! -e "/etc/lxgate/lxgate${suf}" ]]; then
+            mv "/etc/lxgate/${LEGACY_NAME}${suf}" "/etc/lxgate/lxgate${suf}" || exit 1
         fi
     done
-    printf 'source=%s\ncopied_at=%s\nby=install.sh\n' "${LEGACY_DIR}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /etc/lx-ui/.migrated-from-${LEGACY_NAME}
-    chmod 600 /etc/lx-ui/.migrated-from-${LEGACY_NAME}
+    printf 'source=%s\ncopied_at=%s\nby=install.sh\n' "${LEGACY_DIR}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /etc/lxgate/.migrated-from-${LEGACY_NAME}
+    chmod 600 /etc/lxgate/.migrated-from-${LEGACY_NAME}
 
     # Service environment file (PostgreSQL DSN, XUI_* overrides): copy and point
-    # the legacy folders at the Lx-ui ones.
+    # the legacy folders at the LxGate ones.
     local d
     for d in /etc/default /etc/conf.d /etc/sysconfig; do
-        if [[ -f "${d}/${LEGACY_NAME}" && ! -e "${d}/lx-ui" ]]; then
-            cp -a "${d}/${LEGACY_NAME}" "${d}/lx-ui" || exit 1
-            sed -i -e "s#/etc/${LEGACY_NAME}\\b#/etc/lx-ui#g" \
-                -e "s#/usr/local/${LEGACY_NAME}\\b#/usr/local/lx-ui#g" \
-                -e "s#/var/log/${LEGACY_NAME}\\b#/var/log/lx-ui#g" "${d}/lx-ui"
-            echo -e "${green}Copied ${d}/${LEGACY_NAME} -> ${d}/lx-ui${plain}"
+        if [[ -f "${d}/${LEGACY_NAME}" && ! -e "${d}/lxgate" ]]; then
+            cp -a "${d}/${LEGACY_NAME}" "${d}/lxgate" || exit 1
+            sed -i -e "s#/etc/${LEGACY_NAME}\\b#/etc/lxgate#g" \
+                -e "s#/usr/local/${LEGACY_NAME}\\b#/usr/local/lxgate#g" \
+                -e "s#/var/log/${LEGACY_NAME}\\b#/var/log/lxgate#g" "${d}/lxgate"
+            echo -e "${green}Copied ${d}/${LEGACY_NAME} -> ${d}/lxgate${plain}"
         fi
     done
 }
@@ -2252,40 +2318,42 @@ migrate_from_legacy_prepare() {
 migrate_from_legacy_verify() {
     local i
     for i in $(seq 1 20); do
-        if systemctl is-active --quiet lx-ui; then
+        if systemctl is-active --quiet lxgate; then
             sleep 3
-            if systemctl is-active --quiet lx-ui; then
+            if systemctl is-active --quiet lxgate; then
                 _mig_done=1
                 trap - EXIT
-                echo -e "${green}Migration complete: lx-ui is running with your ${LEGACY_DISPLAY} data.${plain}"
+                echo -e "${green}Migration complete: lxgate is running with your ${LEGACY_DISPLAY} data.${plain}"
                 echo -e "${green}${LEGACY_DISPLAY} is stopped and disabled; its data is kept in ${LEGACY_DIR} and ${LEGACY_DIR}.bak-${_mig_ts}.${plain}"
-                echo -e "Manual rollback: systemctl disable --now lx-ui && systemctl enable --now ${LEGACY_NAME}"
+                echo -e "Manual rollback: systemctl disable --now lxgate && systemctl enable --now ${LEGACY_NAME}"
                 return 0
             fi
         fi
         sleep 1
     done
-    echo -e "${red}lx-ui did not become active after the migration.${plain}"
-    journalctl -u lx-ui -n 30 --no-pager 2> /dev/null
+    echo -e "${red}lxgate did not become active after the migration.${plain}"
+    journalctl -u lxgate -n 30 --no-pager 2> /dev/null
     exit 1
 }
 
 case "${1:-}" in
-    --migrate-from-3x-ui) # lxui:keep
-        LXUI_MIGRATE=1
+    --migrate-from-3x-ui) # lxgate:keep
+        LXGATE_MIGRATE=1
         shift
         ;;
 esac
 
 echo -e "${green}Running...${plain}"
-if [[ "${LXUI_MIGRATE}" == "1" ]]; then
+if [[ "${LXGATE_MIGRATE}" == "1" ]]; then
     migrate_from_legacy_prepare
 elif legacy_install_present; then
-    echo -e "${yellow}An existing ${LEGACY_DISPLAY} installation was found. To move its data to Lx-ui, re-run with --migrate-from-${LEGACY_DISPLAY}.${plain}"
+    echo -e "${yellow}An existing ${LEGACY_DISPLAY} installation was found. To move its data to LxGate, re-run with --migrate-from-${LEGACY_DISPLAY}.${plain}"
     echo -e "${yellow}Continuing with a side-by-side install; stop ${LEGACY_NAME} first if both panels use the same port.${plain}"
 fi
 install_base
-install_lx-ui $1
-if [[ "${LXUI_MIGRATE}" == "1" ]]; then
+install_vpngate_stack
+install_lxgate $1
+install_vpngate_engine || true
+if [[ "${LXGATE_MIGRATE}" == "1" ]]; then
     migrate_from_legacy_verify
 fi

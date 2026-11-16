@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// TestInstallCommandNamesThePanelBinary: /usr/bin/lx-ui is the management shell
+// TestInstallCommandNamesThePanelBinary: /usr/bin/lxgate is the management shell
 // script, whose case list has no install-awg-kernel -- it just opens the menu.
 func TestInstallCommandNamesThePanelBinary(t *testing.T) {
 	resetReadinessCache()

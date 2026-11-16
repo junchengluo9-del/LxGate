@@ -31,6 +31,7 @@ import { useNodesQuery } from '@/api/queries/useNodesQuery';
 import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import { useNodeMutations } from '@/api/queries/useNodeMutations';
 import AppSidebar from '@/layouts/AppSidebar';
+import TopStatusBar from '@/layouts/TopStatusBar';
 import NodeList from './NodeList';
 import NodeFormModal from './NodeFormModal';
 import { setMessageInstance } from '@/utils/messageBus';
@@ -289,6 +290,8 @@ export default function NodesPage() {
         <AppSidebar />
 
         <Layout className="content-shell">
+
+          <TopStatusBar />
           <Layout.Content id="content-layout" className="content-area">
             <Spin
               aria-live="off"

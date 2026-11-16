@@ -52,7 +52,7 @@ func recordingBotServer(t *testing.T) func() []string {
 // name, which need not resolve; the links must not depend on reaching it.
 func TestIndividualLinksDoNotNeedAResolvableHost(t *testing.T) {
 	sent := recordingBotServer(t)
-	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lxgate.db"))
 	service.RegisterSubLinkProvider(sub.NewLinkProvider())
 
 	const uuid = "11111111-2222-4333-8444-555555555555"
@@ -92,7 +92,7 @@ func TestIndividualLinksDoNotNeedAResolvableHost(t *testing.T) {
 // be looked up as one, or it selects every other client stored without a subId.
 func TestIndividualLinksOfBlankSubIdClientExposeNoOtherClient(t *testing.T) {
 	sent := recordingBotServer(t)
-	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lxgate.db"))
 	service.RegisterSubLinkProvider(sub.NewLinkProvider())
 
 	const ownerUUID = "11111111-2222-4333-8444-555555555555"

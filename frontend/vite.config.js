@@ -13,13 +13,13 @@ function resolveDBPath() {
     const abs = path.isAbsolute(envFolder)
       ? envFolder
       : path.resolve(import.meta.dirname, '..', envFolder);
-    return path.join(abs, 'lx-ui.db');
+    return path.join(abs, 'lxgate.db');
   }
-  const repoSubDB = path.resolve(import.meta.dirname, '..', 'lx-ui', 'lx-ui.db');
+  const repoSubDB = path.resolve(import.meta.dirname, '..', 'lxgate', 'lxgate.db');
   if (fs.existsSync(repoSubDB)) return repoSubDB;
-  const repoDB = path.resolve(import.meta.dirname, '..', 'lx-ui.db');
+  const repoDB = path.resolve(import.meta.dirname, '..', 'lxgate.db');
   if (fs.existsSync(repoDB)) return repoDB;
-  return '/etc/lx-ui/lx-ui.db';
+  return '/etc/lxgate/lxgate.db';
 }
 
 const PANEL_API_PREFIXES = ['panel/api/', 'panel/csrf-token'];

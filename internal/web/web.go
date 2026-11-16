@@ -1,4 +1,4 @@
-// Package web provides the main web server implementation for the lx-ui panel,
+// Package web provides the main web server implementation for the lxgate panel,
 // including HTTP/HTTPS serving, routing, templates, and background job scheduling.
 package web
 
@@ -39,6 +39,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/web/service/panel"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/service/tgbot"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/websocket"
+	"github.com/mhsanaei/3x-ui/v3/internal/vpngate"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 
 	"github.com/gin-contrib/gzip"
@@ -111,7 +112,7 @@ func EmbeddedDist() embed.FS {
 	return distFS
 }
 
-// Server represents the main web server for the lx-ui panel with controllers, services, and scheduled jobs.
+// Server represents the main web server for the lxgate panel with controllers, services, and scheduled jobs.
 type Server struct {
 	httpServer *http.Server
 	listener   net.Listener
@@ -220,7 +221,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		sessionOptions.MaxAge = sessionMaxAge * 60 // minutes -> seconds
 	}
 	store.Options(sessionOptions)
-	engine.Use(sessions.Sessions("lx-ui", store))
+	engine.Use(sessions.Sessions("lxgate", store))
 	engine.Use(func(c *gin.Context) {
 		c.Set("base_path", basePath)
 	})
@@ -724,7 +725,7 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 		if err := s.tgbotService.TestConnection(); err != nil {
 			return fmt.Errorf("telegram API test failed: %w", err)
 		}
-		s.tgbotService.SendMsgToTgbotAdmins("✅ Test message from lx-ui")
+		s.tgbotService.SendMsgToTgbotAdmins("✅ Test message from lxgate")
 		return nil
 	})
 
@@ -763,6 +764,11 @@ func (s *Server) start(restartXray bool, startTgBot bool) (err error) {
 		}
 	})
 
+	// LxGate: bring up the embedded VPNGate engine as a sidecar. Start never
+	// blocks boot — a host without python3/openvpn gets an "unavailable" status
+	// on the VPNGate page instead of a panel that fails to start.
+	vpngate.GetSupervisor().Start(s.ctx)
+
 	s.startTask(restartXray, loc)
 
 	if startTgBot {
@@ -794,6 +800,9 @@ func (s *Server) StopPanelOnly() error {
 
 func (s *Server) stop(stopXray bool, stopTgBot bool) error {
 	s.cancel()
+	// Stop the VPNGate sidecar (and the OpenVPN process group it owns) before the
+	// rest of shutdown, so no tunnel outlives the panel.
+	vpngate.GetSupervisor().Stop()
 	var err1 error
 	var err2 error
 	if s.httpServer != nil {

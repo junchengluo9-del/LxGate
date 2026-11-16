@@ -1,0 +1,163 @@
+/* VPNGate Exit page — Liquid Glass 2.0 surfaces on top of the shared theme vars. */
+
+.vpngate-page .content-area {
+  padding: 24px;
+}
+
+.vg-page {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.vg-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.vg-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 108px;
+}
+
+.vg-tile-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lg-text-dim);
+}
+
+.vg-tile-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--lg-text);
+}
+
+.vg-tile-foot {
+  font-size: 0.78rem;
+  color: var(--lg-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vg-routing-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 16px;
+}
+
+.vg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vg-field-label {
+  font-size: 0.78rem;
+  font-weight: 550;
+  color: var(--lg-text-dim);
+}
+
+.vg-field-switch {
+  align-items: flex-start;
+}
+
+.vg-field-actions {
+  justify-content: flex-end;
+}
+
+.vg-routing .lg-subtitle {
+  margin-top: 12px;
+}
+
+.vg-bind {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--lg-border);
+}
+
+.vg-rule {
+  margin-top: 10px;
+  max-height: 120px;
+}
+
+.vg-host {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vg-latency {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.vg-latency.ok {
+  color: var(--lg-ok);
+}
+
+.vg-latency.warn {
+  color: var(--lg-warn);
+}
+
+.vg-latency.bad {
+  color: var(--lg-bad);
+}
+
+.vg-country-tag {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  background: var(--lg-accent-soft);
+  color: var(--lg-accent);
+  border-radius: 6px;
+}
+
+.vg-row-active > td {
+  background: color-mix(in srgb, var(--lg-ok) 8%, transparent) !important;
+}
+
+.vg-logs .lg-log {
+  max-height: 300px;
+}
+
+@media (max-width: 1180px) {
+  .vg-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .vg-routing-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .vg-field-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .vpngate-page .content-area {
+    padding: 12px;
+  }
+
+  .vg-tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vg-routing-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,4 +1,4 @@
-// Package sub provides subscription server functionality for the lx-ui panel,
+// Package sub provides subscription server functionality for the lxgate panel,
 // including HTTP/HTTPS servers for serving subscription links and JSON configurations.
 package sub
 

@@ -345,7 +345,7 @@ func TestErrors(t *testing.T) {
 		},
 		{
 			name: "non dat extension",
-			call: func() error { _, err := store.Categories("lx-ui.db", "", 0, 10); return err },
+			call: func() error { _, err := store.Categories("lxgate.db", "", 0, 10); return err },
 			want: ErrInvalidName,
 		},
 		{

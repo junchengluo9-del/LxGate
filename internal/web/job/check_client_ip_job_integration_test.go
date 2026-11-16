@@ -18,7 +18,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
-// lx-ui logger must be initialised once before any code path that can
+// lxgate logger must be initialised once before any code path that can
 // log a warning. otherwise log.Warningf panics on a nil logger.
 var loggerInitOnce sync.Once
 
@@ -48,7 +48,7 @@ func setupIntegrationDB(t *testing.T) {
 		log.SetFlags(origLogFlags)
 	})
 
-	dbtest.InitDB(t, filepath.Join(dbDir, "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(dbDir, "lxgate.db"))
 }
 
 // enforceIpLimitForTest runs the same two steps processObserved does: select

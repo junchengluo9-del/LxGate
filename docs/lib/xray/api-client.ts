@@ -1,4 +1,4 @@
-// Pure builders for lx-ui panel API requests. The panel exposes every endpoint
+// Pure builders for lxgate panel API requests. The panel exposes every endpoint
 // under /panel/api/* and authenticates with `Authorization: Bearer <token>`
 // (reference/api/authentication). Emits a ready cURL command and a fetch()
 // snippet. No React/DOM imports.

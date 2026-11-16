@@ -1,6 +1,6 @@
 ---
 title: Migration
-description: Migrate to lx-ui from lx-ui, between servers, or between lx-ui versions.
+description: Migrate to lxgate from lxgate, between servers, or between lxgate versions.
 icon: ArrowRightLeft
 ---
 
@@ -13,12 +13,12 @@ Moving to a new server is a database move:
 <Step>
 ### Back up the old server
 
-Copy the database (default `/etc/lx-ui/lx-ui.db`) and your certificates. See
+Copy the database (default `/etc/lxgate/lxgate.db`) and your certificates. See
 [Backup & restore](/docs/operations/backup-restore).
 </Step>
 
 <Step>
-### Install lx-ui on the new server
+### Install lxgate on the new server
 
 Use the same install method and a compatible version. See
 [Installation](/docs/guide/installation).
@@ -33,17 +33,17 @@ panel. Update any IP/domain-specific settings.
 
 </Steps>
 
-## Between lx-ui versions
+## Between lxgate versions
 
 Within the same backend, upgrading is usually just re-running the installer or
 pulling a new image — the panel migrates its own database. Across **major**
-versions, read the [release notes](https://github.com/junchengluo9-del/Lx-ui/releases)
+versions, read the [release notes](https://github.com/junchengluo9-del/LxGate/releases)
 first and take a backup.
 
-## From lx-ui
+## From lxgate
 
-Importing an older lx-ui panel's database directly into lx-ui is **not
-supported** — the schemas differ. Install lx-ui fresh and recreate
+Importing an older lxgate panel's database directly into lxgate is **not
+supported** — the schemas differ. Install lxgate fresh and recreate
 inbounds/clients, exporting share links from the old panel as you go.
 
 <Callout type="warn">

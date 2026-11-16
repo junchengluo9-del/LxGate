@@ -1,4 +1,4 @@
-// Pure validation + templating helpers for lx-ui's Telegram bot settings.
+// Pure validation + templating helpers for lxgate's Telegram bot settings.
 // Grounded in internal/web/service/tgbot/tgbot.go (admin ids parsed by
 // parseAdminChats as "chatId[:topicId]"; token handed to telego.NewBot → api.telegram.org)
 // and the panel's tg* settings (tgRunTime uses robfig/cron). No React/DOM.

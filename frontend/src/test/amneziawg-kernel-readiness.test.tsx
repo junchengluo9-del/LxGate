@@ -32,7 +32,7 @@ function Harness({ nodeId, kernelMode }: { nodeId: number | null; kernelMode: bo
 const unavailable = new Msg(true, '', {
   ready: false,
   blockers: [{ code: 'tools', detail: 'awg' }],
-  installCommand: 'sudo lx-ui install-awg-kernel',
+  installCommand: 'sudo lxgate install-awg-kernel',
 });
 
 describe('AmneziaWG kernel readiness in the inbound form', () => {

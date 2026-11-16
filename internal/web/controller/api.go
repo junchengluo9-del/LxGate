@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// APIController handles the main API routes for the lx-ui panel, including inbounds and server management.
+// APIController handles the main API routes for the lxgate panel, including inbounds and server management.
 type APIController struct {
 	BaseController
 	inboundController     *InboundController
@@ -22,6 +22,8 @@ type APIController struct {
 	hostController        *HostController
 	settingController     *SettingController
 	xraySettingController *XraySettingController
+	vpngateController     *VPNGateController
+	systemController      *SystemController
 	userService           panel.UserService
 	apiTokenService       panel.ApiTokenService
 	Tgbot                 tgbot.Tgbot
@@ -233,6 +235,12 @@ func (a *APIController) initRouter(g *gin.RouterGroup) {
 
 	// Subscription balancers — client-side balancers for the JSON sub output
 	NewSubBalancerController(api)
+
+	// LxGate additions: the embedded VPNGate engine and the in-app update check.
+	// They sit inside the authenticated API group, so sessions, 2FA and CSRF
+	// apply exactly as they do for every other panel route.
+	a.vpngateController = NewVPNGateController(api.Group("/vpngate"))
+	a.systemController = NewSystemController(api.Group("/system"))
 
 	// Extra routes
 	api.POST("/backuptotgbot", a.BackuptoTgbot)

@@ -15,7 +15,7 @@ export function generateStaticParams() {
 }
 
 const INSTALL_COMMAND =
-  'bash <(curl -Ls https://raw.githubusercontent.com/junchengluo9-del/Lx-ui/main/install.sh)';
+  'bash <(curl -Ls https://raw.githubusercontent.com/junchengluo9-del/LxGate/main/install.sh)';
 
 export default async function HomePage({ params }: PageProps<'/[lang]'>) {
   const { lang } = await params;

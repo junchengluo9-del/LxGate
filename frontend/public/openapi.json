@@ -1,9 +1,9 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Lx-ui Panel API",
+    "title": "LxGate Panel API",
     "version": "3.x",
-    "description": "Programmatic interface to a Lx-ui panel. Authenticate either by logging in (cookie) or with a scoped API token from Settings → Security → API Token (Bearer). Token access is limited by its admin, monitor, node-sync, or node-admin scope; treat admin tokens like the panel password."
+    "description": "Programmatic interface to a LxGate panel. Authenticate either by logging in (cookie) or with a scoped API token from Settings → Security → API Token (Bearer). Token access is limited by its admin, monitor, node-sync, or node-admin scope; treat admin tokens like the panel password."
   },
   "servers": [
     {
@@ -21,7 +21,7 @@
       "cookieAuth": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "lx-ui",
+        "name": "lxgate",
         "description": "Session cookie set by POST /login. Browser-only."
       }
     },
@@ -3666,7 +3666,7 @@
         "type": "object"
       },
       "Node": {
-        "description": "Node represents a remote lx-ui panel registered with the central panel.\nThe central panel polls each node's existing /panel/api/server/status\nendpoint over HTTP using the per-node ApiToken to populate the runtime\nstatus fields below.",
+        "description": "Node represents a remote lxgate panel registered with the central panel.\nThe central panel polls each node's existing /panel/api/server/status\nendpoint over HTTP using the per-node ApiToken to populate the runtime\nstatus fields below.",
         "properties": {
           "activeCount": {
             "example": 23,
@@ -4409,7 +4409,7 @@
             "type": "array"
           },
           "installCommand": {
-            "example": "sudo /usr/local/lx-ui/lx-ui install-awg-kernel",
+            "example": "sudo /usr/local/lxgate/lxgate install-awg-kernel",
             "type": "string"
           },
           "ready": {
@@ -4689,7 +4689,7 @@
         "type": "object"
       },
       "Setting": {
-        "description": "Setting stores key-value configuration settings for the lx-ui panel.",
+        "description": "Setting stores key-value configuration settings for the lxgate panel.",
         "properties": {
           "id": {
             "type": "integer"
@@ -4917,7 +4917,7 @@
         "type": "object"
       },
       "User": {
-        "description": "User represents a user account in the lx-ui panel.",
+        "description": "User represents a user account in the lxgate panel.",
         "properties": {
           "id": {
             "type": "integer"
@@ -4997,7 +4997,7 @@
     },
     {
       "name": "Nodes",
-      "description": "Manage remote lx-ui panels acting as nodes for a central panel. All endpoints under /panel/api/nodes."
+      "description": "Manage remote lxgate panels acting as nodes for a central panel. All endpoints under /panel/api/nodes."
     },
     {
       "name": "Hosts",
@@ -5026,6 +5026,14 @@
     {
       "name": "Subscription Server",
       "description": "A separate HTTP/HTTPS server that serves proxy subscription links (standard, JSON, and Clash) to clients. The server listens on its own port (default 2096) and is configured in Settings → Subscription. Fresh panels generate random path prefixes for each format; all paths remain configurable. Every subscription endpoint sets response headers for client apps to read traffic/expiry info."
+    },
+    {
+      "name": "VPNGate Exit",
+      "description": "Drives the embedded VPNGate engine. The engine listens on 127.0.0.1 only (internal API on LXGATE_VPNGATE_API_PORT, default 18787; SOCKS5/HTTP proxy on 7928) and authenticates the panel with a shared token, so every call here inherits the panel session, 2FA and CSRF middleware."
+    },
+    {
+      "name": "System & Update",
+      "description": "In-app version check and update trigger. The version check reads GitHub Releases of the release repository; the update either starts the native updater (binary replaced, database and vpngate_data preserved) or returns the docker compose command for container deployments."
     },
     {
       "name": "WebSocket",
@@ -5458,7 +5466,7 @@
                         "detail": "awg"
                       }
                     ],
-                    "installCommand": "sudo /usr/local/lx-ui/lx-ui install-awg-kernel",
+                    "installCommand": "sudo /usr/local/lxgate/lxgate install-awg-kernel",
                     "ready": false
                   }
                 }
@@ -6793,7 +6801,7 @@
         "tags": [
           "Server"
         ],
-        "summary": "Check whether a newer lx-ui release is available on GitHub.",
+        "summary": "Check whether a newer lxgate release is available on GitHub.",
         "operationId": "get_panel_api_server_getPanelUpdateInfo",
         "responses": {
           "200": {
@@ -13581,7 +13589,7 @@
         "tags": [
           "Settings"
         ],
-        "summary": "Restart the entire lx-ui process after a 3-second grace period. The connection drops immediately; the panel comes back online ~5-10 seconds later.",
+        "summary": "Restart the entire lxgate process after a 3-second grace period. The connection drops immediately; the panel comes back online ~5-10 seconds later.",
         "operationId": "post_panel_api_setting_restartPanel",
         "responses": {
           "200": {
@@ -15114,8 +15122,8 @@
                   },
                   "userAgent": {
                     "type": "string",
-                    "default": "lx-ui-outbound-sub/1.0",
-                    "description": "Custom User-Agent sent when fetching this subscription. Defaults to \"lx-ui-outbound-sub/1.0\"."
+                    "default": "lxgate-outbound-sub/1.0",
+                    "description": "Custom User-Agent sent when fetching this subscription. Defaults to \"lxgate-outbound-sub/1.0\"."
                   },
                   "updateInterval": {
                     "type": "integer",
@@ -15212,8 +15220,8 @@
                   },
                   "userAgent": {
                     "type": "string",
-                    "default": "lx-ui-outbound-sub/1.0",
-                    "description": "Custom User-Agent sent when fetching this subscription. Defaults to \"lx-ui-outbound-sub/1.0\"."
+                    "default": "lxgate-outbound-sub/1.0",
+                    "description": "Custom User-Agent sent when fetching this subscription. Defaults to \"lxgate-outbound-sub/1.0\"."
                   },
                   "updateInterval": {
                     "type": "integer",
@@ -16259,6 +16267,613 @@
           },
           "500": {
             "description": "Subscription generation failed."
+          }
+        }
+      }
+    },
+    "/panel/api/vpngate/status": {
+      "get": {
+        "tags": [
+          "VPNGate Exit"
+        ],
+        "summary": "Engine supervisor state (availability, PID, restarts, ports, data directory) plus the engine's own per-service health report and the current Xray binding.",
+        "operationId": "get_panel_api_vpngate_status",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/vpngate/nodes": {
+      "get": {
+        "tags": [
+          "VPNGate Exit"
+        ],
+        "summary": "Cached exit nodes with country, latency, score, sessions and probe state, together with the engine state (active node, routing mode, proxy health).",
+        "operationId": "get_panel_api_vpngate_nodes",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/vpngate/logs": {
+      "get": {
+        "tags": [
+          "VPNGate Exit"
+        ],
+        "summary": "Today's structured engine log entries (timestamp, level, module, message).",
+        "operationId": "get_panel_api_vpngate_logs",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/vpngate/xray-binding": {
+      "get": {
+        "tags": [
+          "VPNGate Exit"
+        ],
+        "summary": "Whether the Xray template currently carries the vpngate-out socks outbound, its proxy address and a routing-rule example.",
+        "operationId": "get_panel_api_vpngate_xray_binding",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/vpngate/refresh": {
+      "post": {
+        "tags": [
+          "VPNGate Exit"
+        ],
+        "summary": "Start a background fetch + speed-test of fresh VPNGate candidates.",
+        "operationId": "post_panel_api_vpngate_refresh",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/vpngate/check": {
+      "post": {
+        "tags": [
+          "VPNGate Exit"
+        ],
+        "summary": "Run the node maintenance pass synchronously (fetch, test, connect if needed).",
+        "operationId": "post_panel_api_vpngate_check",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/vpngate/test-nodes": {
+      "post": {
+        "tags": [
+          "VPNGate Exit"
+        ],
+        "summary": "Re-test the given node ids. Bound to 256 ids per request.",
+        "operationId": "post_panel_api_vpngate_test_nodes",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Node ids to speed-test."
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              },
+              "example": {
+                "ids": [
+                  "JP_1.2.3.4_1194_udp"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/vpngate/connect": {
+      "post": {
+        "tags": [
+          "VPNGate Exit"
+        ],
+        "summary": "Connect the tunnel to one node.",
+        "operationId": "post_panel_api_vpngate_connect",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Node id from /nodes."
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              },
+              "example": {
+                "id": "JP_1.2.3.4_1194_udp"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/vpngate/disconnect": {
+      "post": {
+        "tags": [
+          "VPNGate Exit"
+        ],
+        "summary": "Tear the tunnel down and stop auto-reconnect.",
+        "operationId": "post_panel_api_vpngate_disconnect",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/vpngate/routing": {
+      "post": {
+        "tags": [
+          "VPNGate Exit"
+        ],
+        "summary": "Switch routing mode. The local proxy port never changes, so Xray outbounds that point at vpngate-out keep working without a restart.",
+        "operationId": "post_panel_api_vpngate_routing",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "fixed_region",
+                      "fixed_ip",
+                      "favorites"
+                    ],
+                    "description": "Routing strategy."
+                  },
+                  "country": {
+                    "type": "string",
+                    "description": "ISO country code; required for fixed_region."
+                  },
+                  "ipType": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "residential",
+                      "hosting"
+                    ],
+                    "description": "Exit IP class filter. Default all."
+                  },
+                  "favFallback": {
+                    "type": "boolean",
+                    "description": "Fall back to any healthy node when favourites are unreachable. Default true."
+                  }
+                },
+                "required": [
+                  "mode"
+                ]
+              },
+              "example": {
+                "mode": "fixed_region",
+                "country": "JP",
+                "ipType": "all",
+                "favFallback": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/vpngate/test-proxy": {
+      "post": {
+        "tags": [
+          "VPNGate Exit"
+        ],
+        "summary": "Measure the live exit through the local proxy (exit IP + latency).",
+        "operationId": "post_panel_api_vpngate_test_proxy",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/vpngate/xray-bind": {
+      "post": {
+        "tags": [
+          "VPNGate Exit"
+        ],
+        "summary": "Insert or refresh the vpngate-out socks outbound in the Xray template and reload Xray. Existing outbounds and routing rules are preserved.",
+        "operationId": "post_panel_api_vpngate_xray_bind",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/vpngate/xray-unbind": {
+      "post": {
+        "tags": [
+          "VPNGate Exit"
+        ],
+        "summary": "Remove the vpngate-out outbound and any routing rule that targets it, then reload Xray.",
+        "operationId": "post_panel_api_vpngate_xray_unbind",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/system/version": {
+      "get": {
+        "tags": [
+          "System & Update"
+        ],
+        "summary": "Current and latest version, changelog, release URL, deployment mode (isDocker / canSelfUpdate) and the update command when containerised. A failed GitHub call is reported in checkError instead of failing the request.",
+        "operationId": "get_panel_api_system_version",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/system/update": {
+      "post": {
+        "tags": [
+          "System & Update"
+        ],
+        "summary": "Start an update. Docker mode answers with the docker compose command and started=false; native mode starts the updater and returns runId.",
+        "operationId": "post_panel_api_system_update",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/system/update-status": {
+      "get": {
+        "tags": [
+          "System & Update"
+        ],
+        "summary": "Outcome of the last native update run (pending / success / failed).",
+        "operationId": "get_panel_api_system_update_status",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/system/info": {
+      "get": {
+        "tags": [
+          "System & Update"
+        ],
+        "summary": "Static installation facts: version, build commit, deployment mode, database path, VPNGate data directory and the update command.",
+        "operationId": "get_panel_api_system_info",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
           }
         }
       }

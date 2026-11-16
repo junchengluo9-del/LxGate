@@ -21,7 +21,7 @@ func (legacyKeepAliveClient) TableName() string { return "clients" }
 
 func TestClientKeepAliveSQLiteMigrationPreservesLegacyScalarsAndAddsRanges(t *testing.T) {
 	dbDir := t.TempDir()
-	dbPath := filepath.Join(dbDir, "lx-ui.db")
+	dbPath := filepath.Join(dbDir, "lxgate.db")
 	legacy, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		t.Fatal(err)

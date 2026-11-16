@@ -16,7 +16,7 @@ func TestUpdateHandlerKeepsFieldsTheBodyOmits(t *testing.T) {
 	const email = "partial-body@example.com"
 	dbDir := t.TempDir()
 	t.Setenv("XUI_DB_FOLDER", dbDir)
-	dbtest.InitDB(t, filepath.Join(dbDir, "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(dbDir, "lxgate.db"))
 	db := database.GetDB()
 	ib := &model.Inbound{
 		UserId: 1, Enable: true, Port: 43350, Tag: "in-partial-body",

@@ -14,7 +14,7 @@ fail=0
 hits=$(git ls-files -z | grep -zvE "$ALLOW_FILES" | grep -zvE '^(frontend/node_modules|internal/web/dist|media)/' \
     | xargs -0 grep -nIiE "$PATTERN" 2>/dev/null \
     | grep -viE 'github\.com/mhsanaei/3x-ui/(issues|pull|commit|discussions|security|compare)' \
-    | grep -v 'lxui:keep' || true)
+    | grep -v 'lxgate:keep' || true)
 if [[ -n "$hits" ]]; then
     echo "rebrand guard: upstream download/update/image URLs found:" >&2
     echo "$hits" >&2
@@ -24,15 +24,15 @@ fi
 # The brand identity must be consistent with tools/rebrand.env.
 # shellcheck disable=SC1091
 source tools/rebrand.env
-if [[ "$(tr -d '\n' < internal/config/repo)" != "$LXUI_REPO" ]]; then
-    echo "rebrand guard: internal/config/repo does not match LXUI_REPO in tools/rebrand.env (run tools/rebrand.sh)" >&2
+if [[ "$(tr -d '\n' < internal/config/repo)" != "$LXGATE_REPO" ]]; then
+    echo "rebrand guard: internal/config/repo does not match LXGATE_REPO in tools/rebrand.env (run tools/rebrand.sh)" >&2
     fail=1
 fi
-if ! tools/rebrand.sh --check > /tmp/lxui-rebrand-check.$$ 2>&1; then
+if ! tools/rebrand.sh --check > /tmp/lxgate-rebrand-check.$$ 2>&1; then
     echo "rebrand guard: tools/rebrand.sh would still change files:" >&2
-    cat /tmp/lxui-rebrand-check.$$ >&2
+    cat /tmp/lxgate-rebrand-check.$$ >&2
     fail=1
 fi
-rm -f /tmp/lxui-rebrand-check.$$
+rm -f /tmp/lxgate-rebrand-check.$$
 [[ $fail -eq 0 ]] && echo "rebrand guard: OK"
 exit $fail

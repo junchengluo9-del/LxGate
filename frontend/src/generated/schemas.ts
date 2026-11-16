@@ -3640,7 +3640,7 @@ export const SCHEMAS: Record<string, unknown> = {
     "type": "object"
   },
   "Node": {
-    "description": "Node represents a remote lx-ui panel registered with the central panel.\nThe central panel polls each node's existing /panel/api/server/status\nendpoint over HTTP using the per-node ApiToken to populate the runtime\nstatus fields below.",
+    "description": "Node represents a remote lxgate panel registered with the central panel.\nThe central panel polls each node's existing /panel/api/server/status\nendpoint over HTTP using the per-node ApiToken to populate the runtime\nstatus fields below.",
     "properties": {
       "activeCount": {
         "example": 23,
@@ -4383,7 +4383,7 @@ export const SCHEMAS: Record<string, unknown> = {
         "type": "array"
       },
       "installCommand": {
-        "example": "sudo /usr/local/lx-ui/lx-ui install-awg-kernel",
+        "example": "sudo /usr/local/lxgate/lxgate install-awg-kernel",
         "type": "string"
       },
       "ready": {
@@ -4663,7 +4663,7 @@ export const SCHEMAS: Record<string, unknown> = {
     "type": "object"
   },
   "Setting": {
-    "description": "Setting stores key-value configuration settings for the lx-ui panel.",
+    "description": "Setting stores key-value configuration settings for the lxgate panel.",
     "properties": {
       "id": {
         "type": "integer"
@@ -4891,7 +4891,7 @@ export const SCHEMAS: Record<string, unknown> = {
     "type": "object"
   },
   "User": {
-    "description": "User represents a user account in the lx-ui panel.",
+    "description": "User represents a user account in the lxgate panel.",
     "properties": {
       "id": {
         "type": "integer"

@@ -70,7 +70,7 @@ func swapTestBot(t *testing.T, url string) {
 
 func newStaleButtonTgbot(t *testing.T) *Tgbot {
 	t.Helper()
-	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lx-ui.db"))
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "lxgate.db"))
 	return &Tgbot{}
 }
 

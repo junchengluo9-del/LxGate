@@ -756,7 +756,7 @@ export default function CommandPalette() {
                 {t('close')}
               </span>
             </div>
-            <span>lx-ui Command Palette</span>
+            <span>lxgate Command Palette</span>
           </div>
         </div>
       </div>

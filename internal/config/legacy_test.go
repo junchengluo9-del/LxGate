@@ -30,11 +30,11 @@ func readFile(t *testing.T, path string) string {
 func newTestMigrator(t *testing.T) (legacyMigrator, string, string) {
 	root := t.TempDir()
 	legacy := filepath.Join(root, "etc", "x-ui")
-	fresh := filepath.Join(root, "etc", "lx-ui")
+	fresh := filepath.Join(root, "etc", "lxgate")
 	return legacyMigrator{
 		legacyDir: legacy,
 		newDir:    fresh,
-		newName:   "lx-ui",
+		newName:   "lxgate",
 		serviceUp: func() bool { return false },
 		now:       func() time.Time { return time.Date(2026, 10, 19, 0, 0, 0, 0, time.UTC) },
 	}, legacy, fresh
@@ -54,11 +54,11 @@ func TestLegacyMigrationCopiesFolder(t *testing.T) {
 	if res.Action != "copied" || len(res.Files) != 4 {
 		t.Fatalf("result = %+v", res)
 	}
-	if got := readFile(t, filepath.Join(fresh, "lx-ui.db")); got != "db" {
-		t.Errorf("lx-ui.db = %q", got)
+	if got := readFile(t, filepath.Join(fresh, "lxgate.db")); got != "db" {
+		t.Errorf("lxgate.db = %q", got)
 	}
-	if got := readFile(t, filepath.Join(fresh, "lx-ui.db-wal")); got != "wal" {
-		t.Errorf("lx-ui.db-wal = %q", got)
+	if got := readFile(t, filepath.Join(fresh, "lxgate.db-wal")); got != "wal" {
+		t.Errorf("lxgate.db-wal = %q", got)
 	}
 	if got := readFile(t, filepath.Join(fresh, "certs", "a.pem")); got != "pem" {
 		t.Errorf("certs/a.pem = %q", got)
@@ -99,7 +99,7 @@ func TestLegacyMigrationRefusesWhileServiceRuns(t *testing.T) {
 	if _, err := m.run(); !errors.Is(err, ErrLegacyServiceRunning) {
 		t.Fatalf("err = %v, want ErrLegacyServiceRunning", err)
 	}
-	if fileExists(filepath.Join(fresh, "lx-ui.db")) {
+	if fileExists(filepath.Join(fresh, "lxgate.db")) {
 		t.Error("database copied although the legacy service runs")
 	}
 }
@@ -107,12 +107,12 @@ func TestLegacyMigrationRefusesWhileServiceRuns(t *testing.T) {
 func TestLegacyMigrationSkipsWhenNewDBExists(t *testing.T) {
 	m, legacy, fresh := newTestMigrator(t)
 	writeFile(t, filepath.Join(legacy, "x-ui.db"), "old", 0o600)
-	writeFile(t, filepath.Join(fresh, "lx-ui.db"), "new", 0o600)
+	writeFile(t, filepath.Join(fresh, "lxgate.db"), "new", 0o600)
 	res, err := m.run()
 	if err != nil || res.Action != "none" {
 		t.Fatalf("got %+v, %v", res, err)
 	}
-	if got := readFile(t, filepath.Join(fresh, "lx-ui.db")); got != "new" {
+	if got := readFile(t, filepath.Join(fresh, "lxgate.db")); got != "new" {
 		t.Errorf("existing database overwritten: %q", got)
 	}
 }
@@ -126,7 +126,7 @@ func TestLegacyMigrationRenamesInPlace(t *testing.T) {
 	if err != nil || res.Action != "renamed-in-place" || len(res.Files) != 2 {
 		t.Fatalf("got %+v, %v", res, err)
 	}
-	if readFile(t, filepath.Join(fresh, "lx-ui.db")) != "db" || readFile(t, filepath.Join(fresh, "lx-ui.db-shm")) != "shm" {
+	if readFile(t, filepath.Join(fresh, "lxgate.db")) != "db" || readFile(t, filepath.Join(fresh, "lxgate.db-shm")) != "shm" {
 		t.Error("in-place copy wrong")
 	}
 	if !fileExists(filepath.Join(fresh, "x-ui.db")) {
@@ -139,7 +139,7 @@ func TestLegacyMigrationFixedFolderDoesNotCrossFolders(t *testing.T) {
 	m.folderFixed = true
 	writeFile(t, filepath.Join(legacy, "x-ui.db"), "db", 0o600)
 	res, err := m.run()
-	if err != nil || res.Action != "none" || fileExists(filepath.Join(fresh, "lx-ui.db")) {
+	if err != nil || res.Action != "none" || fileExists(filepath.Join(fresh, "lxgate.db")) {
 		t.Fatalf("got %+v, %v", res, err)
 	}
 }
@@ -152,10 +152,10 @@ func TestLegacyMigrationDockerUsesLegacyFolder(t *testing.T) {
 	if err != nil || res.Action != "use-legacy-folder" || res.To != legacy {
 		t.Fatalf("got %+v, %v", res, err)
 	}
-	if readFile(t, filepath.Join(legacy, "lx-ui.db")) != "db" {
+	if readFile(t, filepath.Join(legacy, "lxgate.db")) != "db" {
 		t.Error("in-place copy in the legacy volume missing")
 	}
-	if fileExists(filepath.Join(fresh, "lx-ui.db")) {
+	if fileExists(filepath.Join(fresh, "lxgate.db")) {
 		t.Error("data copied into the container filesystem")
 	}
 }
