@@ -21,7 +21,11 @@ import { Controller, FormProvider, useForm, useWatch } from 'react-hook-form';
 
 import { HttpUtil, NumberFormatter, RandomUtil, SizeFormatter, Wireguard } from '@/utils';
 import { useQueryClient } from '@tanstack/react-query';
-import { inboundUsesVpngate, useVpngateTakeoverQuery } from '@/api/queries/useVpngateTakeover';
+import {
+  inboundUsesVpngate,
+  postVpngateJson,
+  useVpngateTakeoverQuery,
+} from '@/api/queries/useVpngateTakeover';
 import type { RealityScanResult } from '@/generated/types';
 import {
   rawInboundToFormValues,
@@ -657,7 +661,7 @@ export default function InboundFormModal({
       next = { mode: 'selected', tags: current.filter((value) => value !== tag) };
     }
     if (!next) return;
-    const msg = await HttpUtil.post('/panel/api/vpngate/takeover', next, { silent: true });
+    const msg = await postVpngateJson('/panel/api/vpngate/takeover', next);
     if (!msg?.success) {
       messageApi.warning(
         t('pages.inbounds.form.exitApplyFailed', { msg: msg?.msg || t('somethingWentWrong') }),

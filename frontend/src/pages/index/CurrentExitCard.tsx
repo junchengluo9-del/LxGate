@@ -7,6 +7,7 @@ import { ArrowRightOutlined, DisconnectOutlined, ThunderboltOutlined } from '@an
 
 import { HttpUtil } from '@/utils';
 import {
+  postVpngateJson,
   useVpngateTakeoverQuery,
   type VpngateTakeoverMode,
 } from '@/api/queries/useVpngateTakeover';
@@ -98,7 +99,7 @@ export default function CurrentExitCard({ isMobile }: { isMobile: boolean }) {
 
   const action = useMutation({
     mutationFn: async ({ url, body }: { url: string; body?: unknown }) => {
-      const msg = await HttpUtil.post(url, body ?? {}, { silent: true });
+      const msg = await postVpngateJson(url, body);
       if (!msg?.success) throw new Error(msg?.msg || t('somethingWentWrong'));
       return msg;
     },

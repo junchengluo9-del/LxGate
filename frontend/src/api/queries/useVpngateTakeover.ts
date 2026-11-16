@@ -2,6 +2,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { HttpUtil } from '@/utils';
 
+/**
+ * POST a JSON body to the VPNGate API.
+ *
+ * HttpUtil encodes a plain object as form-urlencoded unless the caller declares
+ * JSON, and every vpngate endpoint binds its body with ShouldBindJSON — so the
+ * header is part of the contract here, not decoration.
+ */
+export function postVpngateJson<T>(url: string, body?: unknown) {
+  return HttpUtil.post<T>(url, body ?? {}, {
+    silent: true,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 /** Who decides which inbounds leave through the VPNGate exit. */
 export type VpngateTakeoverMode = 'all' | 'selected' | 'manual';
 
@@ -72,9 +86,7 @@ export function useSetVpngateTakeover() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: SetVpngateTakeoverInput): Promise<VpngateTakeoverState> => {
-      const msg = await HttpUtil.post<VpngateTakeoverState>('/panel/api/vpngate/takeover', input, {
-        silent: true,
-      });
+      const msg = await postVpngateJson<VpngateTakeoverState>('/panel/api/vpngate/takeover', input);
       if (!msg?.success) throw new Error(msg?.msg || 'takeover failed');
       return msg.obj as VpngateTakeoverState;
     },

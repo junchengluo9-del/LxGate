@@ -31,6 +31,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 import concurrent.futures
+from collections import deque
 import sys
 import uuid
 
@@ -125,6 +126,9 @@ CHECK_INTERVAL_SECONDS = env_int("CHECK_INTERVAL_SECONDS", 1260, 1)
 TARGET_VALID_NODES = env_int("TARGET_VALID_NODES", 3, 1)
 MAX_SCAN_ROWS = env_int("MAX_SCAN_ROWS", 800, 1)
 OPENVPN_TEST_TIMEOUT_SECONDS = env_int("OPENVPN_TEST_TIMEOUT_SECONDS", 35, 1)
+# /api/logs 只回最近这么多条：日志文件一天能长到十几 MB，整份回给面板会撑爆
+# 响应上限（客户端 8 MiB）并被截断成非法 JSON，UI 反而一条日志都看不到。
+LOG_TAIL_ENTRIES = env_int("LOG_TAIL_ENTRIES", 300, 1)
 OPENVPN_CMD = os.environ.get("OPENVPN_CMD", "openvpn")
 OPENVPN_AUTH_USER = os.environ.get("OPENVPN_AUTH_USER", "vpn")
 OPENVPN_AUTH_PASS = os.environ.get("OPENVPN_AUTH_PASS", "vpn")
@@ -6627,7 +6631,7 @@ class Handler(BaseHTTPRequestHandler):
             logs_dir = DATA_DIR / "logs"
             date_str = time.strftime("%Y-%m-%d", time.localtime())
             log_file = logs_dir / f"{date_str}.json"
-            entries = []
+            entries = deque(maxlen=LOG_TAIL_ENTRIES)
             if log_file.exists():
                 try:
                     with lock:
@@ -6641,7 +6645,7 @@ class Handler(BaseHTTPRequestHandler):
                                         pass
                 except Exception as e:
                     print(f"[API Logs] Error reading log file: {e}", flush=True)
-            self.send_json({"logs": entries})
+            self.send_json({"logs": list(entries)})
         elif effective_path == "/api/app_version":
             try:
                 query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query, keep_blank_values=True)

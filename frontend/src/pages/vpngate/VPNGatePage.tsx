@@ -40,6 +40,7 @@ import { HttpUtil } from '@/utils';
 import { useTheme } from '@/hooks/useTheme';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import {
+  postVpngateJson,
   useSetVpngateTakeover,
   useVpngateTakeoverQuery,
   type VpngateInboundOption,
@@ -271,7 +272,7 @@ export default function VPNGatePage() {
 
   const action = useMutation({
     mutationFn: async ({ url, body }: { url: string; body?: unknown }) => {
-      const msg = await HttpUtil.post(url, body ?? {}, { silent: true });
+      const msg = await postVpngateJson(url, body);
       if (!msg?.success) throw new Error(msg?.msg || t('somethingWentWrong'));
       return msg;
     },
