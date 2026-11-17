@@ -19,7 +19,7 @@ backup/
 bin/
 lxgate/
 dist/
-release/
+/release/
 node_modules/
 
 # Ignore compiled binaries
