@@ -1,0 +1,462 @@
+name: Release LxGate
+
+on:
+  workflow_dispatch:
+  # Only main (dev channel) and version tags ship binaries; build any other
+  # branch on demand via workflow_dispatch.
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "**.sh"
+      - "frontend/**"
+      - "lxgate.service.debian"
+      - "lxgate.service.arch"
+      - "lxgate.service.rhel"
+      - ".github/workflows/release.yml"
+
+# Bundled Xray-core release. Keep in sync with xray.RecommendedXrayVersion
+# (internal/xray/compat.go) and DockerInit.sh; TestRecommendedXrayVersionMatchesPins
+# fails when they drift.
+env:
+  XRAY_VERSION: v26.6.27
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      # One platform hitting a transient outage must not cancel the other six.
+      fail-fast: false
+      matrix:
+        platform:
+          - amd64
+          - arm64
+          - armv7
+          - armv6
+          - 386
+          - armv5
+          - s390x
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      # Frontend dist must be built BEFORE go build — Go's //go:embed
+      # all:dist directive in internal/web/web.go requires internal/web/dist/ to exist
+      # at compile time. internal/web/dist/ is .gitignored, so on a fresh CI
+      # checkout it doesn't exist until vite emits it.
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend bundle
+        run: |
+          npm ci
+          npm run build
+        working-directory: frontend
+
+      - name: Build LxGate
+        run: |
+          CURL_RETRY="--retry 5 --retry-all-errors --retry-delay 3"
+          fetch() { wget -q --tries=5 --waitretry=10 --retry-on-http-error=429,500,502,503 "$@"; }
+          export CGO_ENABLED=1
+          export GOOS=linux
+          export GOARCH=${{ matrix.platform }}
+          # Use Bootlin prebuilt cross-toolchains (musl 1.2.5 in stable series)
+          # CGo SQLite must not be tuned to the build host's CPU: an object
+          # built away from a portable baseline (x86-64-v2, SSE4.2 era) SIGILLs
+          # on older machines the moment the panel touches the database.
+          export CGO_CFLAGS="-O2"
+          export CGO_CXXFLAGS="-O2"
+          case "${{ matrix.platform }}" in
+            amd64) BOOTLIN_ARCH="x86-64"; export CGO_CFLAGS="$CGO_CFLAGS -march=x86-64-v2"; export CGO_CXXFLAGS="$CGO_CXXFLAGS -march=x86-64-v2" ;;
+            arm64) BOOTLIN_ARCH="aarch64" ;;
+            armv7) BOOTLIN_ARCH="armv7-eabihf"; export GOARCH=arm GOARM=7 ;;
+            armv6) BOOTLIN_ARCH="armv6-eabihf"; export GOARCH=arm GOARM=6 ;;
+            armv5) BOOTLIN_ARCH="armv5-eabi"; export GOARCH=arm GOARM=5 ;;
+            386) BOOTLIN_ARCH="x86-i686" ;;
+            s390x) BOOTLIN_ARCH="s390x-z13" ;;
+          esac
+          echo "Resolving Bootlin musl toolchain for arch=$BOOTLIN_ARCH (platform=${{ matrix.platform }})"
+          TARBALL_BASE="https://toolchains.bootlin.com/downloads/releases/toolchains/$BOOTLIN_ARCH/tarballs/"
+          TARBALL_URL=$(curl -fsSL $CURL_RETRY "$TARBALL_BASE" | grep -oE "${BOOTLIN_ARCH}--musl--stable-[^\"]+\\.tar\\.xz" | sort -r | head -n1)
+          [ -z "$TARBALL_URL" ] && { echo "Failed to locate Bootlin musl toolchain for arch=$BOOTLIN_ARCH" >&2; exit 1; }
+          echo "Downloading: $TARBALL_URL"
+          cd /tmp
+          curl -fL -sS $CURL_RETRY -o "$(basename "$TARBALL_URL")" "$TARBALL_BASE/$TARBALL_URL"
+          tar -xf "$(basename "$TARBALL_URL")"
+          TOOLCHAIN_DIR=$(find . -maxdepth 1 -type d -name "${BOOTLIN_ARCH}--musl--stable-*" | head -n1)
+          export PATH="$(realpath "$TOOLCHAIN_DIR")/bin:$PATH"
+          export CC=$(realpath "$(find "$TOOLCHAIN_DIR/bin" -name '*-gcc.br_real' -type f -executable | head -n1)")
+          [ -z "$CC" ] && { echo "No gcc.br_real found in $TOOLCHAIN_DIR/bin" >&2; exit 1; }
+          cd -
+          # Stamp the commit into per-commit (dev channel) builds only; tagged
+          # stable releases stay unstamped so config.IsDevBuild() returns false.
+          LDFLAGS="-w -s -linkmode external -extldflags '-static'"
+          if [[ "$GITHUB_REF" != refs/tags/* ]]; then
+            LDFLAGS="$LDFLAGS -X github.com/mhsanaei/3x-ui/v3/internal/config.buildCommit=${GITHUB_SHA::8} -X github.com/mhsanaei/3x-ui/v3/internal/config.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          fi
+          # Self-update follows the repository that built the release.
+          LDFLAGS="$LDFLAGS -X github.com/mhsanaei/3x-ui/v3/internal/config.releaseRepo=${GITHUB_REPOSITORY}"
+          go build -buildvcs=true -ldflags "$LDFLAGS" -o xui-release -v .
+          file xui-release
+          ldd xui-release || echo "Static binary confirmed"
+
+          mkdir lxgate
+          cp xui-release lxgate/
+          cp lxgate.service.debian lxgate/
+          cp lxgate.service.arch lxgate/
+          cp lxgate.service.rhel lxgate/
+          cp lxgate.sh lxgate/
+          mv lxgate/xui-release lxgate/lxgate
+          mkdir lxgate/bin
+          cd lxgate/bin
+
+          # Download dependencies; the Xray archive is checked against the
+          # SHA2-256 that XTLS publishes in the .dgst sidecar.
+          case "${{ matrix.platform }}" in
+            amd64) XRAY_ZIP=Xray-linux-64.zip ;;
+            arm64) XRAY_ZIP=Xray-linux-arm64-v8a.zip ;;
+            armv7) XRAY_ZIP=Xray-linux-arm32-v7a.zip ;;
+            armv6) XRAY_ZIP=Xray-linux-arm32-v6.zip ;;
+            386) XRAY_ZIP=Xray-linux-32.zip ;;
+            armv5) XRAY_ZIP=Xray-linux-arm32-v5.zip ;;
+            s390x) XRAY_ZIP=Xray-linux-s390x.zip ;;
+            *) echo "no Xray archive for ${{ matrix.platform }}" >&2; exit 1 ;;
+          esac
+          Xray_URL="https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/"
+          fetch "${Xray_URL}${XRAY_ZIP}"
+          fetch "${Xray_URL}${XRAY_ZIP}.dgst"
+          XRAY_SHA256=$(sed -n 's/^SHA2-256= *//p' "${XRAY_ZIP}.dgst" | head -n1)
+          [ -n "$XRAY_SHA256" ] || { echo "no SHA2-256 in ${XRAY_ZIP}.dgst" >&2; exit 1; }
+          echo "${XRAY_SHA256}  ${XRAY_ZIP}" | sha256sum -c -
+          unzip "${XRAY_ZIP}"
+          rm -f "${XRAY_ZIP}" "${XRAY_ZIP}.dgst"
+          rm -f geoip.dat geosite.dat
+          fetch https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
+          fetch https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
+          fetch -O geoip_IR.dat https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat
+          fetch -O geosite_IR.dat https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat
+          fetch -O geoip_RU.dat https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat
+          fetch -O geosite_RU.dat https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat
+          mv xray xray-linux-${{ matrix.platform }}
+          # mtg-multi (MTProto sidecar) ships prebuilt release binaries whose
+          # platform labels match our matrix, so download and unpack the matching
+          # archive. Only the platforms the fork publishes are packaged — the tag
+          # lookup lives inside that branch so unpackaged platforms (s390x) never
+          # depend on it. The tag comes from the release-page redirect on
+          # github.com — the host the downloads need anyway — because api.github.com
+          # has 503'd whole release runs while asset downloads kept working.
+          case "${{ matrix.platform }}" in
+            amd64|arm64|armv7|armv6|386)
+              MTG_MULTI_VER=$(curl -sf $CURL_RETRY -o /dev/null -w '%{redirect_url}' "https://github.com/mhsanaei/mtg-multi/releases/latest" | sed -n 's#.*/releases/tag/##p')
+              if [ -z "$MTG_MULTI_VER" ]; then echo "could not resolve the latest mtg-multi release tag"; exit 1; fi
+              MTG_PKG="mtg-multi-${MTG_MULTI_VER#v}-linux-${{ matrix.platform }}"
+              curl -sfLRO $CURL_RETRY "https://github.com/mhsanaei/mtg-multi/releases/download/${MTG_MULTI_VER}/${MTG_PKG}.tar.gz"
+              tar -xzf "${MTG_PKG}.tar.gz"
+              mv "${MTG_PKG}/mtg-multi" "mtg-linux-${{ matrix.platform }}"
+              rm -rf "${MTG_PKG}" "${MTG_PKG}.tar.gz"
+              ;;
+          esac
+          cd ../..
+
+      - name: Package
+        run: |
+          tar -zcvf lxgate-linux-${{ matrix.platform }}.tar.gz lxgate
+          sha256sum lxgate-linux-${{ matrix.platform }}.tar.gz > lxgate-linux-${{ matrix.platform }}.tar.gz.sha256
+
+      - name: Upload files to Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: lxgate-linux-${{ matrix.platform }}
+          path: |
+            ./lxgate-linux-${{ matrix.platform }}.tar.gz
+            ./lxgate-linux-${{ matrix.platform }}.tar.gz.sha256
+
+      - name: Upload files to GH release
+        uses: svenstaro/upload-release-action@v2
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+          file: lxgate-linux-${{ matrix.platform }}.tar.gz*
+          file_glob: true
+          overwrite: true
+          prerelease: true
+
+  # =================================
+  #  Windows Build
+  # =================================
+  build-windows:
+    name: Build for Windows
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        platform:
+          - amd64
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      # Frontend dist must be built BEFORE go build — see comment on the
+      # Linux job above. This step is identical except npm runs on the
+      # Windows runner here.
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend bundle
+        shell: pwsh
+        run: |
+          npm ci
+          npm run build
+        working-directory: frontend
+
+      - name: Install MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-sqlite3
+            mingw-w64-x86_64-pkg-config
+
+      - name: Build LxGate for Windows (CGO)
+        shell: msys2 {0}
+        run: |
+          export PATH="/c/hostedtoolcache/windows/go/$(ls /c/hostedtoolcache/windows/go | sort -V | tail -n1)/x64/bin:$PATH"
+
+          export CGO_ENABLED=1
+          export GOOS=windows
+          export GOARCH=amd64
+          export CC=x86_64-w64-mingw32-gcc
+
+          which go
+          go version
+          gcc --version
+
+          # Version info + manifest resource: a bare stripped Go exe scores high on AV heuristics.
+          PANEL_VERSION=$(tr -d '[:space:]' < internal/config/version)
+          go run github.com/tc-hib/go-winres@v0.3.3 make --arch amd64 \
+            --product-version "$PANEL_VERSION" --file-version "$PANEL_VERSION"
+
+          # Stamp the commit into per-commit (dev channel) builds only.
+          LDFLAGS="-w -s"
+          if [[ "$GITHUB_REF" != refs/tags/* ]]; then
+            LDFLAGS="$LDFLAGS -X github.com/mhsanaei/3x-ui/v3/internal/config.buildCommit=${GITHUB_SHA:0:8} -X github.com/mhsanaei/3x-ui/v3/internal/config.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          fi
+          # Self-update follows the repository that built the release.
+          LDFLAGS="$LDFLAGS -X github.com/mhsanaei/3x-ui/v3/internal/config.releaseRepo=${GITHUB_REPOSITORY}"
+          go build -buildvcs=true -ldflags "$LDFLAGS" -o xui-release.exe -v .
+
+      - name: Copy and download resources
+        shell: pwsh
+        run: |
+          $retry = @{ MaximumRetryCount = 5; RetryIntervalSec = 10 }
+          mkdir lxgate
+          Copy-Item xui-release.exe lxgate\lxgate.exe
+          mkdir lxgate\bin
+          cd lxgate\bin
+
+          # Download Xray for Windows
+          $Xray_URL = "https://github.com/XTLS/Xray-core/releases/download/$env:XRAY_VERSION/"
+          Invoke-WebRequest @retry -Uri "${Xray_URL}Xray-windows-64.zip" -OutFile "Xray-windows-64.zip"
+          Expand-Archive -Path "Xray-windows-64.zip" -DestinationPath .
+          Remove-Item "Xray-windows-64.zip"
+          Remove-Item geoip.dat, geosite.dat -ErrorAction SilentlyContinue
+          Invoke-WebRequest @retry -Uri "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat" -OutFile "geoip.dat"
+          Invoke-WebRequest @retry -Uri "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" -OutFile "geosite.dat"
+          Invoke-WebRequest @retry -Uri "https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat" -OutFile "geoip_IR.dat"
+          Invoke-WebRequest @retry -Uri "https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat" -OutFile "geosite_IR.dat"
+          Invoke-WebRequest @retry -Uri "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat" -OutFile "geoip_RU.dat"
+          Invoke-WebRequest @retry -Uri "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat" -OutFile "geosite_RU.dat"
+          Rename-Item xray.exe xray-windows-amd64.exe
+
+          # mtg-multi (MTProto sidecar) publishes a prebuilt Windows binary, so
+          # download and unpack it instead of compiling. The tag comes from the
+          # release-page redirect on github.com — not api.github.com, whose
+          # outages have failed release runs while asset downloads kept working.
+          $MTG_MULTI_VER = (curl.exe -sf --retry 5 --retry-all-errors --retry-delay 3 -o NUL -w '%{redirect_url}' "https://github.com/mhsanaei/mtg-multi/releases/latest") -replace '^.*/releases/tag/', ''
+          if (-not $MTG_MULTI_VER -or $MTG_MULTI_VER -notmatch '^v[\d.]+$') { throw "could not resolve the latest mtg-multi release tag" }
+          $MTG_PKG = "mtg-multi-$($MTG_MULTI_VER.TrimStart('v'))-windows-amd64"
+          curl.exe -sfLRO --retry 5 --retry-all-errors --retry-delay 3 "https://github.com/mhsanaei/mtg-multi/releases/download/$MTG_MULTI_VER/$MTG_PKG.zip"
+          Expand-Archive -Path "$MTG_PKG.zip" -DestinationPath "mtg-tmp" -Force
+          Move-Item "mtg-tmp/$MTG_PKG/mtg-multi.exe" "mtg-windows-amd64.exe"
+          Remove-Item -Recurse -Force "mtg-tmp", "$MTG_PKG.zip"
+
+          cd ..
+          Copy-Item -Path ..\windows_files\* -Destination . -Recurse
+          cd ..
+
+      - name: Package to Zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path .\lxgate -DestinationPath "lxgate-windows-amd64.zip"
+          $hash = (Get-FileHash lxgate-windows-amd64.zip -Algorithm SHA256).Hash.ToLower()
+          [IO.File]::WriteAllText("$PWD\lxgate-windows-amd64.zip.sha256", "$hash  lxgate-windows-amd64.zip`n")
+
+      - name: Upload files to Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: lxgate-windows-amd64
+          path: |
+            ./lxgate-windows-amd64.zip
+            ./lxgate-windows-amd64.zip.sha256
+
+      - name: Upload files to GH release
+        uses: svenstaro/upload-release-action@v2
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+          file: lxgate-windows-amd64.zip*
+          file_glob: true
+          overwrite: true
+          prerelease: true
+
+  # =================================
+  #  Stable release (version tags)
+  # =================================
+  # The build jobs upload to the tag's release as a prerelease so it never
+  # becomes "latest" with a partial asset set. Once every platform has uploaded,
+  # flip it to a normal release and mark it latest so releases/latest (used by
+  # install.sh, update.sh and the panel update check) resolves to this tag.
+  publish-stable:
+    name: Publish stable release
+    needs: [build, build-windows]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Mark release as stable and latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -e
+          retry() {
+            for i in 1 2 3 4 5; do
+              "$@" && return 0
+              echo "attempt $i failed: ${*:1:3}" >&2
+              sleep $((i * 5))
+            done
+            return 1
+          }
+          ver="${TAG#v}"
+          # Release notes: the matching "— v<ver>" section of docs/LX_CHANGES.md.
+          awk -v hdr="v${ver}" '
+            /^## / { if (found) exit; if (index($0, "— " hdr) && substr($0, length($0) - length(hdr) + 1) == hdr) { found = 1; next } }
+            found { print }
+          ' docs/LX_CHANGES.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "LxGate ${TAG}. See docs/LX_CHANGES.md for details." > notes.md
+          fi
+          printf '\nInstall or update:\n\n    bash <(curl -Ls https://raw.githubusercontent.com/%s/main/install.sh)\n' "${GITHUB_REPOSITORY}" >> notes.md
+          # All 8 platform archives and their checksums must be present.
+          count=$(gh release view "${TAG}" --json assets -q '[.assets[].name | select(test("^lxgate-.*\\.(tar\\.gz|zip)(\\.sha256)?$"))] | length')
+          echo "release assets: ${count}"
+          if [ "${count}" -lt 16 ]; then
+            echo "expected 16 assets (8 archives + 8 .sha256), found ${count}" >&2
+            exit 1
+          fi
+          retry gh release edit "${TAG}" --prerelease=false --latest \
+            --title "LxGate ${TAG}" --notes-file notes.md
+          gh release view "${TAG}" --json tagName,isPrerelease,isDraft
+
+  # =================================
+  #  Rolling dev channel (per-commit)
+  # =================================
+  # Publishes/overwrites the build artifacts to a single fixed-tag pre-release
+  # `dev-latest`, force-moved to the new commit on every push to main. The panel's
+  # "Dev" update channel installs from this tag. `--latest=false` is load-bearing:
+  # it keeps releases/latest pointing at the real stable tag, so the stable
+  # channel is unaffected.
+  publish-dev:
+    name: Publish rolling dev release
+    needs: [build, build-windows]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # Serialize racing pushes; never cancel an in-flight upload, or the dev
+    # release could be left with a partial asset set.
+    concurrency:
+      group: dev-release
+      cancel-in-progress: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dev-artifacts
+          merge-multiple: true
+
+      - name: Publish dev-latest pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -e
+          retry() {
+            for i in 1 2 3 4 5; do
+              "$@" && return 0
+              echo "attempt $i failed: ${*:1:3}" >&2
+              sleep $((i * 5))
+            done
+            return 1
+          }
+          short="${COMMIT::8}"
+          notes="Rolling development build — installs via the panel's Dev update channel.
+
+          commit=${COMMIT}
+          built=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          Automated per-commit build from main. Not a stable release."
+
+          # Force-move the dev-latest tag to this commit so the release tracks it.
+          git tag -f dev-latest "${COMMIT}"
+          retry git push -f origin refs/tags/dev-latest
+
+          # The release exists on every run but the first; edit-first avoids an
+          # existence probe that can 503 and mis-route into create (422).
+          if ! retry gh release edit dev-latest --prerelease --latest=false \
+              --title "Dev build ${short}" --notes "${notes}"; then
+            retry gh release create dev-latest --prerelease --latest=false \
+              --target "${COMMIT}" --title "Dev build ${short}" --notes "${notes}"
+          fi
+
+          retry gh release upload dev-latest dev-artifacts/*.tar.gz dev-artifacts/*.zip dev-artifacts/*.sha256 --clobber
