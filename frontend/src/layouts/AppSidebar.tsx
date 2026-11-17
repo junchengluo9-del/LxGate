@@ -17,7 +17,6 @@ import {
   MailOutlined,
   MenuFoldOutlined,
   MenuOutlined,
-  MenuUnfoldOutlined,
   MoonFilled,
   MoonOutlined,
   ReadOutlined,
@@ -342,23 +341,25 @@ export default function AppSidebar() {
         trigger={null}
       >
         <div className={`sider-brand${collapsed ? ' is-rail' : ''}`}>
-          {collapsed ? (
-            <span className="brand-mark" aria-hidden>
-              {monogram}
-            </span>
-          ) : (
-            <span className="brand-text">{BRAND_NAME}</span>
-          )}
+          {!collapsed && <span className="brand-text">{BRAND_NAME}</span>}
           <Tooltip title={collapseLabel} placement="right">
+            {/* In the rail the monogram doubles as the expand button: one control
+                instead of a badge squeezed next to a hamburger in 76px. */}
             <button
               type="button"
-              className="sidebar-collapse"
+              className={`sidebar-collapse${collapsed ? ' is-mark' : ''}`}
               aria-label={collapseLabel}
               aria-expanded={!collapsed}
               aria-controls="sider-nav"
               onClick={toggleCollapsed}
             >
-              {collapsed ? <MenuUnfoldOutlined aria-hidden /> : <MenuFoldOutlined aria-hidden />}
+              {collapsed ? (
+                <span className="brand-mark" aria-hidden>
+                  {monogram}
+                </span>
+              ) : (
+                <MenuFoldOutlined aria-hidden />
+              )}
             </button>
           </Tooltip>
         </div>

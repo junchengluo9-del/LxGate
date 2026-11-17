@@ -65,17 +65,28 @@
   line-height: 1.1;
 }
 
+/* The monogram is the letter inside the rail's expand button; the button
+   carries the brand gradient. */
 .brand-mark {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
   font-size: 15px;
   font-weight: 700;
+  line-height: 1;
   color: #fff;
+}
+
+.sidebar-collapse.is-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #4c8dff, #7c5cff);
+  color: #fff;
   box-shadow: 0 4px 12px rgba(76, 141, 255, 0.32);
+}
+
+.sidebar-collapse.is-mark:hover,
+.sidebar-collapse.is-mark:focus-visible {
+  background: linear-gradient(135deg, #5c98ff, #8a6bff);
+  color: #fff;
 }
 
 .brand-block {
