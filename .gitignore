@@ -48,3 +48,7 @@ docker-compose.override.yml
 # Local runtime data (never commit)
 vpngate_data/.api_token
 vpngate_data/*.db
+
+# Held back on first push: the GitHub App lacks the `workflows` permission.
+# Remove this rule (and add these files back) after granting/entering them via GitHub.
+.github/workflows/
