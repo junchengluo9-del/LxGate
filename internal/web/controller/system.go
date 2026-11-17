@@ -11,6 +11,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/release"
+	"github.com/mhsanaei/3x-ui/v3/internal/web/middleware"
+	"github.com/mhsanaei/3x-ui/v3/internal/web/service"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/service/panel"
 
 	"github.com/gin-gonic/gin"
@@ -21,17 +23,26 @@ import (
 // this instead of pretending it can self-update.
 const DockerUpdateCommand = "docker compose pull && docker compose up -d"
 
-// SystemController serves the in-app version check and the update trigger.
+// SystemController serves the in-app version check, the update settings and the
+// update trigger.
 //
 // Division of labour: GET /panel/api/system/version reads GitHub Releases for
-// junchengluo9-del/LxGate, POST /panel/api/system/update either hands the
-// container case back to the operator (docker compose) or starts the existing
-// native updater, which replaces the binary and restarts the service while
-// keeping the SQLite database and vpngate_data/ untouched.
+// junchengluo9-del/LxGate on the configured channel, POST
+// /panel/api/system/update-settings stores that channel and the optional
+// read-only token, and POST /panel/api/system/update either hands the container
+// case back to the operator (docker compose) or starts the existing native
+// updater, which replaces the binary and restarts the service while keeping the
+// SQLite database and vpngate_data/ untouched.
+//
+// LxGate's release repository is private, so every GitHub call carries the token
+// the operator saved in the update settings (or GITHUB_TOKEN in the panel's
+// environment). A token never leaves the panel: the settings endpoint answers
+// with hasGithubToken and a masked hint.
 type SystemController struct {
 	BaseController
 
-	panelService panel.PanelService
+	panelService   panel.PanelService
+	settingService service.SettingService
 	// releaseClient and the docker probe are seam fields so tests can point them
 	// at a fixture server and force either deployment mode.
 	releaseClient *release.Client
@@ -52,6 +63,8 @@ func NewSystemController(g *gin.RouterGroup) *SystemController {
 func (a *SystemController) initRouter(g *gin.RouterGroup) {
 	g.GET("/version", a.version)
 	g.POST("/update", a.update)
+	g.GET("/update-settings", a.getUpdateSettings)
+	g.POST("/update-settings", a.saveUpdateSettings)
 	g.GET("/update-status", a.updateStatus)
 	g.GET("/info", a.info)
 }
@@ -83,6 +96,13 @@ type versionPayload struct {
 	CanSelfUpdate   bool   `json:"canSelfUpdate"`
 	UpdateCommand   string `json:"updateCommand,omitempty"`
 	CheckError      string `json:"checkError,omitempty"`
+	// Prerelease tells the UI that the resolved release is a rolling
+	// pre-release (the dev channel), so it can label it correctly.
+	Prerelease bool `json:"prerelease,omitempty"`
+	// LatestCommit is the release's commit on the dev channel, where the tag
+	// (dev-latest) identifies nothing by itself.
+	LatestCommit  string `json:"latestCommit,omitempty"`
+	CurrentCommit string `json:"currentCommit,omitempty"`
 }
 
 func (a *SystemController) version(c *gin.Context) {
@@ -90,14 +110,48 @@ func (a *SystemController) version(c *gin.Context) {
 	jsonObj(c, payload, nil)
 }
 
+// updateSettings is what GET and POST /update-settings exchange.
+type updateSettings struct {
+	Channel           string `json:"channel"`
+	HasGithubToken    bool   `json:"hasGithubToken"`
+	GithubTokenMasked string `json:"githubTokenMasked,omitempty"`
+	// TokenFileInPlace reports whether the updater can read the stored token
+	// from disk. The native updater runs update.sh as root and reads the file
+	// the panel mirrors the token into.
+	TokenFileInPlace bool `json:"tokenFileInPlace,omitempty"`
+}
+
+// settings fills the channel and token from the settings table, tolerating a
+// panel whose database is not ready yet (an empty answer is stable/no token).
+func (a *SystemController) settings() (channel string, token string) {
+	channel = release.ChannelStable
+	if value, err := a.settingService.GetUpdateChannel(); err == nil {
+		channel = value
+	}
+	if value, err := a.settingService.GetGithubToken(); err == nil {
+		token = value
+	}
+	if token == "" {
+		// Fall back to the environment so an operator can supply the token from
+		// the service unit instead of the database.
+		token = strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
+		if token == "" {
+			token = strings.TrimSpace(os.Getenv("GITHUB_API_TOKEN"))
+		}
+	}
+	return channel, token
+}
+
 func (a *SystemController) collectVersion(ctx context.Context) versionPayload {
 	repo := config.GetReleaseRepo()
 	docker := a.dockerProbe != nil && a.dockerProbe()
 	current := config.GetPanelVersion()
+	channel, token := a.settings()
 
 	payload := versionPayload{
 		CurrentVersion: current,
-		Channel:        "stable",
+		CurrentCommit:  release.ShortCommit(config.GetBuildCommit()),
+		Channel:        channel,
 		Repo:           repo,
 		IsDocker:       docker,
 		CanSelfUpdate:  !docker,
@@ -106,11 +160,15 @@ func (a *SystemController) collectVersion(ctx context.Context) versionPayload {
 	if docker {
 		payload.UpdateCommand = DockerUpdateCommand
 	}
+	if a.releaseClient == nil {
+		payload.CheckError = "the release client is not configured"
+		return payload
+	}
 
 	// The GitHub call is capped so a blocked network answers the panel quickly.
 	checkCtx, cancel := context.WithTimeout(ctx, release.DefaultTimeout)
 	defer cancel()
-	info, err := a.releaseClient.Latest(checkCtx)
+	info, err := a.releaseClient.WithToken(token).Release(checkCtx, channel)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			payload.CheckError = releaseCheckMessage(err)
@@ -119,22 +177,91 @@ func (a *SystemController) collectVersion(ctx context.Context) versionPayload {
 		return payload
 	}
 
-	payload.LatestVersion = release.NormalizeTag(info.TagName)
-	payload.UpdateAvailable = release.IsNewer(info.TagName, current)
+	payload.Prerelease = info.Prerelease
 	payload.Changelog = info.Body
 	payload.ReleaseName = info.Name
 	payload.ReleaseURL = info.HTMLURL
 	if !info.PublishedAt.IsZero() {
 		payload.PublishedAt = info.PublishedAt.Format(time.RFC3339)
 	}
+
+	if channel == release.ChannelDev {
+		// The dev tag is fixed (dev-latest), so the commit is what tells two
+		// builds apart; the tag itself would always look "current".
+		latestCommit := release.ExtractCommit(info)
+		payload.LatestCommit = release.ShortCommit(latestCommit)
+		payload.LatestVersion = release.DevTag
+		if latestCommit != "" {
+			payload.LatestVersion = release.ChannelDev + "+" + release.ShortCommit(latestCommit)
+		}
+		payload.UpdateAvailable = latestCommit == "" || !release.CommitsEqual(config.GetBuildCommit(), latestCommit)
+		return payload
+	}
+
+	payload.LatestVersion = release.NormalizeTag(info.TagName)
+	payload.UpdateAvailable = release.IsNewer(info.TagName, current)
 	return payload
 }
 
 func releaseCheckMessage(err error) string {
+	if errors.Is(err, release.ErrAuthRequired) {
+		return "The GitHub release repository is private: add a read-only GitHub token in the update settings. (" + err.Error() + ")"
+	}
 	if errors.Is(err, release.ErrNoRelease) {
 		return "no published release yet"
 	}
 	return "could not reach GitHub releases: " + err.Error()
+}
+
+func (a *SystemController) getUpdateSettings(c *gin.Context) {
+	channel, token := a.settings()
+	settings := updateSettings{
+		Channel:        channel,
+		HasGithubToken: token != "",
+	}
+	if token != "" {
+		settings.GithubTokenMasked = service.MaskGithubToken(token)
+	}
+	if info, err := os.Stat(config.GetGithubTokenFilePath()); err == nil && info.Mode().Perm()&0o077 == 0 {
+		settings.TokenFileInPlace = true
+	}
+	jsonObj(c, settings, nil)
+}
+
+// updateSettingsForm is the POST body. An empty githubToken means "keep the
+// stored one" — the GET never returns the value, so the form cannot round-trip
+// it; clearing needs its own flag.
+type updateSettingsForm struct {
+	Channel          string `json:"channel" form:"channel" validate:"omitempty,oneof=stable dev"`
+	GithubToken      string `json:"githubToken" form:"githubToken" validate:"omitempty,max=255"`
+	ClearGithubToken bool   `json:"clearGithubToken" form:"clearGithubToken"`
+}
+
+func (a *SystemController) saveUpdateSettings(c *gin.Context) {
+	form, ok := middleware.BindAndValidate[updateSettingsForm](c)
+	if !ok {
+		return
+	}
+	if strings.TrimSpace(form.Channel) != "" {
+		if err := a.settingService.SetUpdateChannel(form.Channel); err != nil {
+			jsonMsg(c, "failed to save the update channel", err)
+			return
+		}
+	}
+	token := strings.TrimSpace(form.GithubToken)
+	switch {
+	case form.ClearGithubToken:
+		if err := a.settingService.SetGithubToken(""); err != nil {
+			jsonMsg(c, "failed to clear the GitHub token", err)
+			return
+		}
+	case token != "":
+		if err := a.settingService.SetGithubToken(token); err != nil {
+			jsonMsg(c, "failed to save the GitHub token", err)
+			return
+		}
+	}
+	a.getUpdateSettings(c)
 }
 
 // update starts a native self-update, or explains the container workflow.
@@ -155,9 +282,11 @@ func (a *SystemController) update(c *gin.Context) {
 		jsonMsg(c, "failed to start the update", err)
 		return
 	}
+	channel, _ := a.settings()
 	jsonObj(c, gin.H{
 		"started":      true,
 		"mode":         "native",
+		"channel":      channel,
 		"runId":        strconv.FormatInt(runID, 10),
 		"message":      "Update started. The panel restarts when the new binary is in place; the database and vpngate_data are preserved.",
 		"preserveData": []string{config.GetDBPath(), "/opt/lxgate/vpngate_data"},
@@ -172,6 +301,7 @@ func (a *SystemController) updateStatus(c *gin.Context) {
 // so operators do not have to guess where LxGate keeps its state.
 func (a *SystemController) info(c *gin.Context) {
 	docker := a.dockerProbe != nil && a.dockerProbe()
+	channel, _ := a.settings()
 	jsonObj(c, gin.H{
 		"name":           config.GetDisplayName(),
 		"version":        config.GetPanelVersion(),
@@ -181,6 +311,7 @@ func (a *SystemController) info(c *gin.Context) {
 		"devBuild":       config.IsDevBuild(),
 		"isDocker":       docker,
 		"repo":           config.GetReleaseRepo(),
+		"channel":        channel,
 		"dbPath":         config.GetDBPath(),
 		"vpngateDataDir": "/opt/lxgate/vpngate_data",
 		"updateCommand":  updateCommandFor(docker),

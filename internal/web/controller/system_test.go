@@ -162,11 +162,11 @@ func TestSystemUpdateInDockerReturnsCommand(t *testing.T) {
 	var payload struct {
 		Success bool `json:"success"`
 		Obj     struct {
-			Started   bool     `json:"started"`
-			Mode      string   `json:"mode"`
-			Command   string   `json:"command"`
-			Preserve  []string `json:"preserveData"`
-			Message   string   `json:"message"`
+			Started  bool     `json:"started"`
+			Mode     string   `json:"mode"`
+			Command  string   `json:"command"`
+			Preserve []string `json:"preserveData"`
+			Message  string   `json:"message"`
 		} `json:"obj"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
@@ -231,4 +231,165 @@ func TestIsDockerEnvironmentHonoursEnv(t *testing.T) {
 	// Without the env override the answer depends on /.dockerenv, which is
 	// absent in this sandbox; the call must simply not panic.
 	_ = IsDockerEnvironment()
+}
+
+// newSystemDBTestRouter is newSystemTestRouter plus a real settings database, so
+// the channel and token the controller reads come from the settings table.
+func newSystemDBTestRouter(t *testing.T, handler http.HandlerFunc) (*gin.Engine, *SystemController) {
+	t.Helper()
+	newHostTestDB(t)
+	return newSystemTestRouter(t, handler, false)
+}
+
+type updateSettingsResponse struct {
+	Success bool `json:"success"`
+	Obj     struct {
+		Channel           string `json:"channel"`
+		HasGithubToken    bool   `json:"hasGithubToken"`
+		GithubTokenMasked string `json:"githubTokenMasked"`
+		TokenFileInPlace  bool   `json:"tokenFileInPlace"`
+	} `json:"obj"`
+}
+
+func doSystemJSON(t *testing.T, router *gin.Engine, method, path string, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+// A private repository answers 404 without a token, and the panel has to say so
+// instead of "no release published yet".
+func TestSystemVersionExplainsPrivateRepoWithoutToken(t *testing.T) {
+	router, _ := newSystemDBTestRouter(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GITHUB_API_TOKEN", "")
+
+	rec := doSystemJSON(t, router, http.MethodGet, "/panel/api/system/version", "")
+	var payload versionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.Contains(payload.Obj.CheckError, "private") {
+		t.Fatalf("checkError must point at the missing token: %q", payload.Obj.CheckError)
+	}
+}
+
+// The dev channel asks for the rolling dev-latest tag, and the tag's commit is
+// what decides whether an update is available.
+func TestSystemVersionDevChannelReadsDevLatest(t *testing.T) {
+	var gotPath string
+	router, controller := newSystemDBTestRouter(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tag_name":     "dev-latest",
+			"name":         "Dev build",
+			"body":         "commit=abcdef1234567890",
+			"prerelease":   true,
+			"published_at": "2026-11-17T03:12:11Z",
+		})
+	})
+	if err := controller.settingService.SetUpdateChannel("dev"); err != nil {
+		t.Fatalf("set channel: %v", err)
+	}
+
+	rec := doSystemJSON(t, router, http.MethodGet, "/panel/api/system/version", "")
+	var payload struct {
+		Success bool `json:"success"`
+		Obj     struct {
+			Channel         string `json:"channel"`
+			LatestVersion   string `json:"latestVersion"`
+			LatestCommit    string `json:"latestCommit"`
+			UpdateAvailable bool   `json:"updateAvailable"`
+			Prerelease      bool   `json:"prerelease"`
+		} `json:"obj"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.HasSuffix(gotPath, "/releases/tags/dev-latest") {
+		t.Fatalf("dev channel must read the rolling pre-release, path = %q", gotPath)
+	}
+	if payload.Obj.Channel != "dev" || !payload.Obj.Prerelease {
+		t.Fatalf("obj = %#v", payload.Obj)
+	}
+	if payload.Obj.LatestCommit != "abcdef12" {
+		t.Fatalf("latestCommit = %q", payload.Obj.LatestCommit)
+	}
+	if !payload.Obj.UpdateAvailable {
+		t.Fatal("a build without a matching commit must see the dev release as an update")
+	}
+}
+
+// The settings endpoint stores the channel and the token, masks the token in its
+// answer, and sends the token to GitHub on the next check.
+func TestSystemUpdateSettingsRoundTrip(t *testing.T) {
+	var gotAuth string
+	router, controller := newSystemDBTestRouter(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		if gotAuth == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tag_name": "v9.9.9",
+			"name":     "LxGate 9.9.9",
+		})
+	})
+
+	rec := doSystemJSON(t, router, http.MethodPost, "/panel/api/system/update-settings",
+		`{"channel":"dev","githubToken":"ghp_secret_value_1234"}`)
+	var saved updateSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &saved); err != nil {
+		t.Fatalf("decode: %v (body=%s)", err, rec.Body.String())
+	}
+	if !saved.Success {
+		t.Fatalf("save failed: %s", rec.Body.String())
+	}
+	if saved.Obj.Channel != "dev" {
+		t.Fatalf("channel = %q", saved.Obj.Channel)
+	}
+	if !saved.Obj.HasGithubToken {
+		t.Fatal("hasGithubToken must be true after saving a token")
+	}
+	if strings.Contains(rec.Body.String(), "ghp_secret_value_1234") {
+		t.Fatal("the token must never be returned by the API")
+	}
+	if saved.Obj.GithubTokenMasked == "" || saved.Obj.GithubTokenMasked == "ghp_secret_value_1234" {
+		t.Fatalf("masked = %q", saved.Obj.GithubTokenMasked)
+	}
+	if !saved.Obj.TokenFileInPlace {
+		t.Fatal("the updater's token file must exist for the native updater")
+	}
+
+	// A check now authenticates with the stored token.
+	rec = doSystemJSON(t, router, http.MethodGet, "/panel/api/system/version", "")
+	if gotAuth != "Bearer ghp_secret_value_1234" {
+		t.Fatalf("Authorization = %q", gotAuth)
+	}
+
+	// An empty token in a later save keeps the stored one (the form never sees
+	// the value), and clearing needs its own flag.
+	doSystemJSON(t, router, http.MethodPost, "/panel/api/system/update-settings", `{"channel":"stable"}`)
+	if !controller.settingService.HasGithubToken() {
+		t.Fatal("an empty token must not wipe the stored one")
+	}
+
+	rec = doSystemJSON(t, router, http.MethodPost, "/panel/api/system/update-settings", `{"clearGithubToken":true}`)
+	var cleared updateSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &cleared); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if cleared.Obj.HasGithubToken {
+		t.Fatal("clearGithubToken must remove the token")
+	}
+	if controller.settingService.HasGithubToken() {
+		t.Fatal("the stored token must be gone")
+	}
 }

@@ -14,6 +14,7 @@
  * component only has to reference var(--lg-*) to participate in the theme.
  */
 
+html.light,
 body.light {
   --lg-canvas: #fafbfc;
   --lg-canvas-accent:
@@ -41,6 +42,7 @@ body.light {
   --lg-radius-lg: 16px;
 }
 
+html.dark,
 body.dark {
   --lg-canvas: #090b10;
   --lg-canvas-accent:
@@ -68,7 +70,8 @@ body.dark {
   --lg-radius-lg: 16px;
 }
 
-body.dark[data-theme='ultra-dark'] {
+html[data-theme='ultra-dark'],
+html[data-theme='ultra-dark'] body.dark {
   --lg-canvas: #000000;
   --lg-surface: #101013;
   --lg-surface-solid: #101013;
@@ -82,18 +85,49 @@ body.dark[data-theme='ultra-dark'] {
 
 /* ------------------------------------------------------------------ canvas */
 
+/* The canvas is painted on `html` as well as `body`. A page whose content is
+   shorter than the viewport -- or any overscroll -- otherwise shows the
+   browser's default white behind the body, which is what made dark mode keep a
+   bright strip along the bottom edge. */
 html,
 body {
-  background: var(--lg-canvas, #fafbfc);
+  min-height: 100%;
+  background-color: var(--lg-canvas, #fafbfc);
+}
+
+html.light,
+html.dark {
+  background-image: var(--lg-canvas-accent);
+  background-attachment: fixed;
 }
 
 body.light,
 body.dark {
+  min-height: 100vh;
   background-color: var(--lg-canvas);
   background-image: var(--lg-canvas-accent);
   background-attachment: fixed;
   color: var(--lg-text);
   -webkit-font-smoothing: antialiased;
+}
+
+/* The React mount node and every layout shell stay transparent so the one
+   canvas above shows through everywhere, edge to edge. */
+#root {
+  min-height: 100vh;
+  background: transparent;
+}
+
+html {
+  transition: background-color 0.2s ease;
+}
+
+body,
+#root,
+body :is(.ant-layout, .ant-layout-content) {
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 /* Every page container defers to the shared canvas variables, so the old
@@ -139,6 +173,14 @@ body :is(.ant-drawer-content) {
 }
 
 /* ------------------------------------------------------------- surfaces */
+
+/* A footer is part of the page shell, not a separate white band: it takes the
+   canvas and a hairline top border in both themes. */
+body :is(.ant-layout-footer) {
+  background: transparent;
+  color: var(--lg-text-dim);
+  border-top: 1px solid var(--lg-border);
+}
 
 body :is(.ant-card) {
   background: var(--lg-surface);

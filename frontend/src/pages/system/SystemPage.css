@@ -49,6 +49,69 @@
   white-space: pre-wrap;
 }
 
+/* Update settings: channel switch plus the read-only token for the private
+   release repository. */
+.sys-settings .sys-settings-hint {
+  margin-bottom: 16px;
+}
+
+.sys-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-top: 1px solid var(--lg-border);
+}
+
+.sys-setting-copy {
+  min-width: 220px;
+  flex: 1 1 260px;
+}
+
+.sys-setting-copy .lg-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sys-channel {
+  flex-shrink: 0;
+}
+
+.sys-token-state {
+  margin-inline-end: 0;
+}
+
+.sys-token-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sys-token-row .ant-input-affix-wrapper,
+.sys-token-row .ant-input {
+  flex: 1 1 280px;
+  min-width: 220px;
+}
+
+.sys-token-hint {
+  margin: 10px 0 0;
+}
+
+@media (max-width: 768px) {
+  .sys-token-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sys-token-row .ant-btn {
+    width: 100%;
+  }
+}
+
 .sys-preserve {
   display: flex;
   align-items: center;

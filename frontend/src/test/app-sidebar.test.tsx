@@ -24,49 +24,45 @@ async function renderSidebar() {
   return view;
 }
 
-test('keeps the sidebar expanded after pinning it from the header and restores the choice', async () => {
+test('starts expanded so the full wordmark and labels are visible', async () => {
+  const view = await renderSidebar();
+  const sider = view.container.querySelector('.ant-layout-sider');
+  const wrapper = view.container.querySelector('.ant-sidebar');
+
+  expect(sider?.classList.contains('ant-layout-sider-collapsed')).toBe(false);
+  expect(view.container.querySelector('.brand-text')?.textContent).toBe('LxGate');
+  expect(screen.getByRole('button', { name: 'Collapse sidebar' })).not.toBeNull();
+  // The wrapper only ever matches its own sider, so the content beside it is
+  // pushed instead of covered by a floating panel.
+  expect(wrapper?.getAttribute('class')).not.toContain('sidebar-pinned');
+});
+
+test('collapses from the toggle, remembers the choice and never reacts to hover', async () => {
   const first = await renderSidebar();
-  const sidebar = first.container.querySelector('.ant-layout-sider');
-  const sidebarRoot = first.container.querySelector('.ant-sidebar');
+  const sider = first.container.querySelector('.ant-layout-sider');
+  const wrapper = first.container.querySelector('.ant-sidebar');
 
-  expect(sidebar?.classList.contains('ant-layout-sider-collapsed')).toBe(true);
+  fireEvent.mouseEnter(wrapper!);
+  expect(sider?.classList.contains('ant-layout-sider-collapsed')).toBe(false);
 
-  fireEvent.mouseEnter(sidebarRoot!);
-
-  const pinButton = screen.getByRole('button', { name: 'Pin sidebar' });
-  expect(pinButton.closest('.brand-actions')).not.toBeNull();
-
-  fireEvent.click(pinButton);
-  fireEvent.mouseLeave(sidebarRoot!);
-
-  expect(sidebar?.classList.contains('ant-layout-sider-collapsed')).toBe(false);
-  expect(sidebarRoot?.getAttribute('style')).toContain('--sider-rail: 220px');
-  expect(localStorage.getItem('sidebar-pinned')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+  expect(sider?.classList.contains('ant-layout-sider-collapsed')).toBe(true);
+  expect(localStorage.getItem('sidebar-collapsed')).toBe('true');
+  // The rail shows a monogram instead of the clipped wordmark.
+  expect(first.container.querySelector('.brand-mark')?.textContent).toBe('L');
+  expect(first.container.querySelector('.brand-text')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Expand sidebar' })).not.toBeNull();
 
   first.unmount();
 
   const second = await renderSidebar();
-  const restoredSidebar = second.container.querySelector('.ant-layout-sider');
-  const restoredSidebarRoot = second.container.querySelector('.ant-sidebar');
+  const restored = second.container.querySelector('.ant-layout-sider');
+  expect(restored?.classList.contains('ant-layout-sider-collapsed')).toBe(true);
 
-  expect(restoredSidebar?.classList.contains('ant-layout-sider-collapsed')).toBe(false);
-  expect(restoredSidebarRoot?.getAttribute('style')).toContain('--sider-rail: 220px');
-  expect(screen.getByRole('button', { name: 'Pin sidebar' })).not.toBeNull();
-});
-
-test('returns to the compact rail after unpinning', async () => {
-  const view = await renderSidebar();
-  const sidebar = view.container.querySelector('.ant-layout-sider');
-  const sidebarRoot = view.container.querySelector('.ant-sidebar');
-
-  fireEvent.mouseEnter(sidebarRoot!);
-  fireEvent.click(screen.getByRole('button', { name: 'Pin sidebar' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Pin sidebar' }));
-  fireEvent.mouseLeave(sidebarRoot!);
-
-  expect(sidebar?.classList.contains('ant-layout-sider-collapsed')).toBe(true);
-  expect(sidebarRoot?.getAttribute('style')).toContain('--sider-rail: 72px');
-  expect(localStorage.getItem('sidebar-pinned')).toBe('false');
+  fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+  expect(restored?.classList.contains('ant-layout-sider-collapsed')).toBe(false);
+  expect(localStorage.getItem('sidebar-collapsed')).toBe('false');
+  expect(second.container.querySelector('.brand-text')?.textContent).toBe('LxGate');
 });
 
 test('labels the palette shortcut with the modifier the platform actually uses', async () => {

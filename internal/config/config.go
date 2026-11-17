@@ -176,6 +176,14 @@ func GetUpdateStatusFilePath() string {
 	return filepath.Join(GetDBFolderPath(), "update-status.json")
 }
 
+// GetGithubTokenFilePath is where the panel mirrors the configured release
+// token so the updater script (update.sh) and lxgate.sh can authenticate
+// against the private release repository. It sits beside the database, which
+// update.sh never touches, and is written 0600.
+func GetGithubTokenFilePath() string {
+	return filepath.Join(GetDBFolderPath(), "github-token")
+}
+
 // GetDBKind returns the configured database backend: "sqlite" (default) or "postgres".
 func GetDBKind() string {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("XUI_DB_TYPE")))

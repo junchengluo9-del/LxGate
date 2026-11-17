@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -21,6 +22,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
+	"github.com/mhsanaei/3x-ui/v3/internal/release"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/netproxy"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/random"
@@ -210,6 +212,15 @@ var defaultValueMap = map[string]string{
 	"xrayOutboundTestUrl":         "https://www.google.com/generate_204",
 	"panelOutbound":               "",
 	"devChannelEnable":            "false",
+	// updateChannel is the channel the in-app updater follows: "stable" for
+	// the newest published release, "dev" for the rolling dev-latest build.
+	// The legacy devChannelEnable boolean is still honoured by the old node
+	// updater; updateChannel is what the System & Update page edits.
+	"updateChannel": "",
+	// githubToken is an optional read-only token for the private release
+	// repository. It is never returned by the API: GET answers with
+	// hasGithubToken + a masked hint (see MaskGithubToken).
+	"githubToken": "",
 
 	// LDAP defaults
 	"ldapEnable":             "false",
@@ -415,6 +426,13 @@ func (s *SettingService) ResetSettings() error {
 
 func (s *SettingService) getSetting(key string) (*model.Setting, error) {
 	db := database.GetDB()
+	if db == nil {
+		// Callers ask for settings before the panel's database exists (an early
+		// request during start-up, a unit test of an unrelated handler). Answering
+		// with an error lets each of them fall back to a default instead of
+		// panicking on a nil handle.
+		return nil, errDatabaseUnavailable
+	}
 	setting := &model.Setting{}
 	err := db.Model(model.Setting{}).Where("key = ?", key).First(setting).Error
 	if err != nil {
@@ -423,9 +441,15 @@ func (s *SettingService) getSetting(key string) (*model.Setting, error) {
 	return setting, nil
 }
 
+// errDatabaseUnavailable reports a settings read before the database is open.
+var errDatabaseUnavailable = errors.New("settings database is not initialized")
+
 func (s *SettingService) saveSetting(key string, value string) error {
 	setting, err := s.getSetting(key)
 	db := database.GetDB()
+	if db == nil {
+		return errDatabaseUnavailable
+	}
 	if database.IsNotFound(err) {
 		return db.Create(&model.Setting{
 			Key:   key,
@@ -1387,8 +1411,105 @@ func (s *SettingService) GetDevChannelEnable() (bool, error) {
 	return s.getBool("devChannelEnable")
 }
 
+// SetDevChannelEnable writes both the channel the updater follows and the
+// legacy boolean the overview's dev switch reads, so the two controls cannot
+// disagree.
 func (s *SettingService) SetDevChannelEnable(value bool) error {
+	channel := release.ChannelStable
+	if value {
+		channel = release.ChannelDev
+	}
+	if err := s.setString("updateChannel", channel); err != nil {
+		return err
+	}
 	return s.setBool("devChannelEnable", value)
+}
+
+// GetUpdateChannel returns the channel the in-app updater follows: "stable"
+// (newest published release) or "dev" (the rolling dev-latest pre-release).
+// It defaults to stable, including when the settings row is missing or the
+// database is not available yet.
+func (s *SettingService) GetUpdateChannel() (string, error) {
+	value, err := s.getString("updateChannel")
+	if err != nil {
+		return release.ChannelStable, err
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		// Installations that predate updateChannel keep their choice in the
+		// legacy boolean; follow it until the channel is set explicitly.
+		if enabled, legacyErr := s.GetDevChannelEnable(); legacyErr == nil && enabled {
+			return release.ChannelDev, nil
+		}
+		return release.ChannelStable, nil
+	}
+	return release.NormalizeChannel(value), nil
+}
+
+func (s *SettingService) SetUpdateChannel(channel string) error {
+	return s.setString("updateChannel", release.NormalizeChannel(channel))
+}
+
+// GetGithubToken returns the read-only token used for the private release
+// repository, or "" when none is configured. Callers must never log or return
+// it; the API surface exposes HasGithubToken and a masked hint instead.
+func (s *SettingService) GetGithubToken() (string, error) {
+	value, err := s.getString("githubToken")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(value), nil
+}
+
+// HasGithubToken reports whether a release token is stored, without reading it
+// into the response.
+func (s *SettingService) HasGithubToken() bool {
+	token, err := s.GetGithubToken()
+	return err == nil && token != ""
+}
+
+// SetGithubToken stores the release token and mirrors it to the file the
+// updater script reads, so a native self-update can download from the private
+// repository. An empty value clears both. The file is written 0600 because it
+// is a credential.
+func (s *SettingService) SetGithubToken(token string) error {
+	token = strings.TrimSpace(token)
+	if err := s.setString("githubToken", token); err != nil {
+		return err
+	}
+	path := config.GetGithubTokenFilePath()
+	if token == "" {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			logger.Warning("clear release token file failed:", err)
+		}
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(token+"\n"), 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
+}
+
+// MaskGithubToken renders a stored token as a hint the UI can show:
+// "ghp_…cdef" for a long token, "…" for a short one, and "" when none is set.
+// It deliberately keeps fewer characters than any usable credential needs.
+func MaskGithubToken(token string) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ""
+	}
+	if len(token) <= 8 {
+		return "••••••••"
+	}
+	prefix := token
+	if len(prefix) > 4 {
+		prefix = prefix[:4]
+	}
+	suffix := token[len(token)-4:]
+	return prefix + "…" + suffix
 }
 
 // GetIpLimitEnable reports whether the IP-limit feature is available. Always

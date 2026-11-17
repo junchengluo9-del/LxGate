@@ -13,6 +13,36 @@ done < <(env | grep -E '^LXGATE_[A-Z0-9_]+=' || true)
 unset __lxgate_k __lxgate_v
 # <<< lxgate identity <<<
 
+# >>> private release repository support >>>
+# The repository is private, so the raw host cannot serve its scripts. The panel
+# stores a read-only token in its update settings and mirrors it to a 0600 file;
+# the CLI reads that file (or XUI_GITHUB_TOKEN) and goes through the contents API.
+lxgate_github_token() {
+    local token="${XUI_GITHUB_TOKEN:-${LXGATE_GITHUB_TOKEN:-}}"
+    if [[ -z "${token}" ]]; then
+        local token_file="${XUI_GITHUB_TOKEN_FILE:-/etc/lxgate/github-token}"
+        if [[ -r "${token_file}" ]]; then
+            token="$(tr -d '\r\n' < "${token_file}")"
+        fi
+    fi
+    printf '%s' "${token}"
+}
+
+# lxgate_fetch_repo_file <ref> <path> <dest>
+lxgate_fetch_repo_file() {
+    local ref="$1" path="$2" dest="$3" token
+    token="$(lxgate_github_token)"
+    if [[ -n "${token}" ]]; then
+        curl -fsSL -H "Authorization: Bearer ${token}" \
+            -H "Accept: application/vnd.github.raw" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o "${dest}" "https://api.github.com/repos/${LXGATE_REPO}/contents/${path}?ref=${ref}"
+        return $?
+    fi
+    curl -fsSL -o "${dest}" "${LXGATE_RAW_BASE}/${ref}/${path}"
+}
+# <<< private release repository support <<<
+
 red='\033[0;31m'
 green='\033[0;32m'
 blue='\033[0;34m'
@@ -142,8 +172,17 @@ before_show_menu() {
 }
 
 install() {
-    bash <(curl -Ls ${LXGATE_RAW_BASE}/main/install.sh)
-    if [[ $? == 0 ]]; then
+    local install_script
+    install_script="$(mktemp)"
+    if ! lxgate_fetch_repo_file "main" "install.sh" "${install_script}" || [[ ! -s "${install_script}" ]]; then
+        rm -f "${install_script}"
+        LOGE "Could not download install.sh from ${LXGATE_REPO}. If the panel is on a private repository, save a read-only GitHub token in the panel's update settings."
+        return 1
+    fi
+    bash "${install_script}"
+    local rc=$?
+    rm -f "${install_script}"
+    if [[ $rc == 0 ]]; then
         if [[ $# == 0 ]]; then
             start
         else
@@ -161,8 +200,17 @@ update() {
         fi
         return 0
     fi
-    bash <(curl -Ls ${LXGATE_RAW_BASE}/main/update.sh)
-    if [[ $? == 0 ]]; then
+    local update_script
+    update_script="$(mktemp)"
+    if ! lxgate_fetch_repo_file "main" "update.sh" "${update_script}" || [[ ! -s "${update_script}" ]]; then
+        rm -f "${update_script}"
+        LOGE "Could not download update.sh from ${LXGATE_REPO}. If the panel is on a private repository, save a read-only GitHub token in the panel's update settings."
+        return 1
+    fi
+    bash "${update_script}"
+    local rc=$?
+    rm -f "${update_script}"
+    if [[ $rc == 0 ]]; then
         LOGI "Update is complete, Panel has automatically restarted "
         before_show_menu
     fi
@@ -179,8 +227,17 @@ update_dev() {
     fi
     # XUI_UPDATE_TAG tells update.sh to install the dev-latest pre-release
     # instead of the latest stable tag.
-    XUI_UPDATE_TAG="dev-latest" bash <(curl -Ls ${LXGATE_RAW_BASE}/main/update.sh)
-    if [[ $? == 0 ]]; then
+    local update_script
+    update_script="$(mktemp)"
+    if ! lxgate_fetch_repo_file "main" "update.sh" "${update_script}" || [[ ! -s "${update_script}" ]]; then
+        rm -f "${update_script}"
+        LOGE "Could not download update.sh from ${LXGATE_REPO}. If the panel is on a private repository, save a read-only GitHub token in the panel's update settings."
+        return 1
+    fi
+    XUI_UPDATE_TAG="dev-latest" bash "${update_script}"
+    local rc=$?
+    rm -f "${update_script}"
+    if [[ $rc == 0 ]]; then
         LOGI "Dev update is complete, Panel has automatically restarted "
         before_show_menu
     fi

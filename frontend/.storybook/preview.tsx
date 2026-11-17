@@ -21,9 +21,14 @@ if (!i18next.isInitialized) {
 export const withTheme: Decorator = (Story, context) => {
   const dark = context.globals.theme === 'dark';
   useLayoutEffect(() => {
+    // The palette variables are read by `html` too (its background shows below
+    // a short story and on overscroll), so the theme class goes on both.
+    const theme = dark ? 'dark' : 'light';
+    document.documentElement.classList.remove('dark', 'light');
+    document.documentElement.classList.add(theme);
     document.body.classList.remove('dark', 'light');
-    document.body.classList.add(dark ? 'dark' : 'light');
-    document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+    document.body.classList.add(theme);
+    document.documentElement.style.colorScheme = theme;
     document.documentElement.removeAttribute('data-theme');
   }, [dark]);
   return (

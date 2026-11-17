@@ -128,7 +128,9 @@
     "unpinSidebar": "Unpin sidebar",
     "subFormats": "Sub Formats",
     "vpngate": "VPNGate Exit",
-    "system": "System & Update"
+    "system": "System & Update",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar"
   },
   "pages": {
     "login": {
@@ -2725,7 +2727,24 @@
       },
       "toasts": {
         "updateStarted": "Update started"
-      }
+      },
+      "updateSettingsTitle": "Update settings",
+      "updateSettingsHint": "LxGate publishes from a private repository. Save a read-only GitHub token here so the panel can read its releases and download updates.",
+      "channelLabel": "Update channel",
+      "channelHint": "Stable follows the newest published release. Dev follows the rolling build of the newest commit (dev-latest).",
+      "channelStable": "Stable",
+      "channelDev": "Dev",
+      "channelSaved": "Update channel changed",
+      "tokenLabel": "GitHub token",
+      "tokenHint": "A read-only token (contents: read) for the release repository. It is stored on this server and never shown in full again.",
+      "tokenPlaceholder": "ghp_… or github_pat_…",
+      "tokenSaved": "GitHub token saved",
+      "tokenConfigured": "Configured: {mask}",
+      "tokenNotConfigured": "No token configured",
+      "tokenSave": "Save token",
+      "tokenClear": "Clear",
+      "tokenCleared": "GitHub token cleared",
+      "tokenRequiredHint": "A private repository needs a token before the release check can work."
     }
   },
   "tgbot": {

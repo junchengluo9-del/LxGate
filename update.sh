@@ -90,6 +90,85 @@ fi
 # The IP lookups use plain curl so they still report this server's own address.
 [[ -n "${XUI_UPDATE_PROXY}" ]] && curl_bin="${curl_bin} --proxy ${XUI_UPDATE_PROXY}"
 
+# >>> private release repository support >>>
+# LxGate's release repository is private. The panel stores a read-only token in
+# its update settings and hands it over both in the environment and as a
+# 0600 file beside the database, because the panel's detached update process
+# does not always inherit the panel's environment.
+github_token="${XUI_GITHUB_TOKEN:-}"
+if [[ -z "${github_token}" ]]; then
+    github_token_file="${XUI_GITHUB_TOKEN_FILE:-/etc/lxgate/github-token}"
+    if [[ -r "${github_token_file}" ]]; then
+        github_token="$(tr -d '\r\n' < "${github_token_file}")"
+    fi
+fi
+# gh_auth carries the headers every GitHub API call needs when a token exists.
+gh_auth=()
+if [[ -n "${github_token}" ]]; then
+    gh_auth=(-H "Authorization: Bearer ${github_token}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+fi
+
+# _json_asset_id reads a release JSON payload on stdin and prints the id of the
+# asset whose name is $1. The payload is split on '{' so each object gets its own
+# line and the name/id pair can be matched without a JSON parser; update.sh runs
+# on hosts where jq is not installed.
+_json_asset_id() {
+    local name="$1"
+    tr '{' '\n' \
+        | grep -F -e "\"name\":\"${name}\"" -e "\"name\": \"${name}\"" \
+        | grep -o -E '"id"[[:space:]]*:[[:space:]]*[0-9]+' \
+        | head -n 1 \
+        | grep -o -E '[0-9]+'
+}
+
+# _download_release_asset <tag> <asset-name> <dest>
+# With a token the asset is resolved through the API and fetched as
+# application/octet-stream, which is the documented way to download from a
+# private repository; the public web download URL answers 404 there. Without a
+# token (a public fork, or an older install) the web URL is used as before.
+_download_release_asset() {
+    local tag="$1" name="$2" dest="$3" asset_id rc
+    rm -f "${dest}"
+    if [[ -n "${github_token}" ]]; then
+        asset_id=$(${curl_bin} -Ls "${gh_auth[@]}" "https://api.github.com/repos/${LXGATE_REPO}/releases/tags/${tag}" 2> /dev/null | _json_asset_id "${name}")
+        if [[ -n "${asset_id}" ]]; then
+            ${curl_bin} -fLRo "${dest}" -H "Authorization: Bearer ${github_token}" -H "Accept: application/octet-stream" "https://api.github.com/repos/${LXGATE_REPO}/releases/assets/${asset_id}" 2> /dev/null
+            rc=$?
+            if [[ ${rc} -eq 0 && -s "${dest}" ]]; then
+                return 0
+            fi
+            echo -e "${yellow}API asset download failed for ${name} (rc=${rc}), retrying via the web download URL${plain}"
+            rm -f "${dest}"
+        else
+            echo -e "${yellow}${name} is not part of release ${tag}; continuing without it${plain}"
+        fi
+    fi
+    ${curl_bin} -fLRo "${dest}" "${LXGATE_RELEASE_BASE}/download/${tag}/${name}" 2> /dev/null
+}
+
+# _fetch_repo_file <ref> <path> <dest> writes one repository file to dest.
+# The raw host cannot serve a private repository, so a token switches the fetch
+# to the contents API with the raw media type.
+_fetch_repo_file() {
+    local ref="$1" path="$2" dest="$3"
+    if [[ -n "${github_token}" ]]; then
+        ${curl_bin} -fsSL "${gh_auth[@]}" -H "Accept: application/vnd.github.raw" -o "${dest}" "https://api.github.com/repos/${LXGATE_REPO}/contents/${path}?ref=${ref}"
+        return $?
+    fi
+    ${curl_bin} -fLRo "${dest}" "${LXGATE_RAW_BASE}/${ref}/${path}"
+}
+
+# _repo_file_status <ref> <path> prints the HTTP status of one repository file.
+_repo_file_status() {
+    local ref="$1" path="$2"
+    if [[ -n "${github_token}" ]]; then
+        ${curl_bin} -sIL "${gh_auth[@]}" -H "Accept: application/vnd.github.raw" -o /dev/null -w '%{http_code}' "https://api.github.com/repos/${LXGATE_REPO}/contents/${path}?ref=${ref}"
+        return
+    fi
+    ${curl_bin} -sIL --retry 3 --connect-timeout 15 -o /dev/null -w '%{http_code}' "${LXGATE_RAW_BASE}/${ref}/${path}"
+}
+# <<< private release repository support <<<
+
 # Check OS and set release variable
 if [[ -f /etc/os-release ]]; then
     source /etc/os-release
@@ -521,7 +600,7 @@ require_repo_files() {
     shift
     [[ "${ref}" == "main" ]] && return 0
     for name in "$@"; do
-        status=$(${curl_bin} -sIL --retry 3 --connect-timeout 15 -o /dev/null -w '%{http_code}' "${LXGATE_RAW_BASE}/${ref}/${name}")
+        status=$(_repo_file_status "${ref}" "${name}")
         if [[ "${status}" != "200" ]]; then
             _fail "ERROR: ${name} is not available for ${ref} (HTTP ${status}). Update to a release that ships it, or to 'dev-latest'. The current installation is untouched."
         fi
@@ -548,11 +627,17 @@ update_lxgate() {
         tag_version="${XUI_UPDATE_TAG}"
         echo -e "${green}Using update tag: ${tag_version}${plain}"
     else
-        tag_version=$(${curl_bin} -Ls "https://api.github.com/repos/${LXGATE_REPO}/releases/latest" 2> /dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        tag_version=$(${curl_bin} -Ls "${gh_auth[@]}" "https://api.github.com/repos/${LXGATE_REPO}/releases/latest" 2> /dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$tag_version" ]]; then
             # No stable release yet: releases/latest ignores pre-releases, so
-            # fall back to the rolling dev build when it exists.
-            dev_code=$(${curl_bin} -sIL -o /dev/null -w '%{http_code}' "${LXGATE_RELEASE_BASE}/download/dev-latest/lxgate-linux-$(arch).tar.gz" 2> /dev/null)
+            # fall back to the rolling dev build when it exists. With a token the
+            # private repository is asked through the API; the web download URL
+            # answers 404 for it.
+            if [[ -n "${github_token}" ]]; then
+                dev_code=$(${curl_bin} -sL "${gh_auth[@]}" -o /dev/null -w '%{http_code}' "https://api.github.com/repos/${LXGATE_REPO}/releases/tags/dev-latest" 2> /dev/null)
+            else
+                dev_code=$(${curl_bin} -sIL -o /dev/null -w '%{http_code}' "${LXGATE_RELEASE_BASE}/download/dev-latest/lxgate-linux-$(arch).tar.gz" 2> /dev/null)
+            fi
             if [[ "${dev_code}" == "200" ]]; then
                 echo -e "${yellow}No stable lxgate release found; updating to the rolling dev build (dev-latest).${plain}"
                 tag_version="dev-latest"
@@ -571,8 +656,7 @@ update_lxgate() {
     # The unit files are only fetched when the release tarball lacks them, so
     # they are checked at that point instead of here.
     [[ $release == "alpine" ]] && require_repo_files "${script_ref}" "lxgate.rc"
-    ${curl_bin} -fLRo ${xui_folder}-linux-$(arch).tar.gz ${LXGATE_RELEASE_BASE}/download/${tag_version}/lxgate-linux-$(arch).tar.gz 2> /dev/null
-    if [[ $? -ne 0 ]]; then
+    if ! _download_release_asset "${tag_version}" "lxgate-linux-$(arch).tar.gz" "${xui_folder}-linux-$(arch).tar.gz"; then
         _fail "ERROR: Failed to download lxgate, please be sure that your server can access GitHub"
     fi
     if [[ ! -s ${xui_folder}-linux-$(arch).tar.gz ]]; then
@@ -584,7 +668,12 @@ update_lxgate() {
     # predating the sidecar) is tolerated with a warning.
     archive="${xui_folder}-linux-$(arch).tar.gz"
     rm -f "${archive}.sha256"
-    sidecar_code=$(${curl_bin} -sL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 -o "${archive}.sha256" -w '%{http_code}' "${LXGATE_RELEASE_BASE}/download/${tag_version}/lxgate-linux-$(arch).tar.gz.sha256" 2> /dev/null)
+    if _download_release_asset "${tag_version}" "lxgate-linux-$(arch).tar.gz.sha256" "${archive}.sha256"; then
+        sidecar_code="200"
+    else
+        rm -f "${archive}.sha256"
+        sidecar_code="404"
+    fi
     if [[ "${sidecar_code}" == "200" ]]; then
         expected_sha256=$(awk 'NR == 1 {print $1}' "${archive}.sha256")
         actual_sha256=$(sha256sum "${archive}" | awk '{print $1}')
@@ -608,7 +697,7 @@ update_lxgate() {
         echo -e "${green}Downloading startup unit lxgate.rc...${plain}"
         xui_rc_temp="/etc/init.d/lxgate.tmp.$$"
         rm -f "${xui_rc_temp}"
-        ${curl_bin} -fLRo "${xui_rc_temp}" "${LXGATE_RAW_BASE}/${script_ref}/lxgate.rc" > /dev/null 2>&1
+        _fetch_repo_file "${script_ref}" "lxgate.rc" "${xui_rc_temp}" > /dev/null 2>&1
         if [[ $? -ne 0 ]]; then
             rm -f "${xui_rc_temp}" "${archive}"
             _fail "ERROR: Failed to download startup unit lxgate.rc, please be sure that your server can access GitHub"
@@ -803,20 +892,24 @@ update_lxgate() {
                 echo -e "${yellow}Service files not found in tar.gz, downloading from GitHub...${plain}"
                 case "${release}" in
                     ubuntu | debian | armbian)
-                        service_unit_url="${LXGATE_RAW_BASE}/${script_ref}/lxgate.service.debian"
+                        service_unit_name="lxgate.service.debian"
                         ;;
                     arch | manjaro | parch)
-                        service_unit_url="${LXGATE_RAW_BASE}/${script_ref}/lxgate.service.arch"
+                        service_unit_name="lxgate.service.arch"
                         ;;
                     *)
-                        service_unit_url="${LXGATE_RAW_BASE}/${script_ref}/lxgate.service.rhel"
+                        service_unit_name="lxgate.service.rhel"
                         ;;
                 esac
 
-                if ! _install_xui_service_unit "$service_unit_url" "true"; then
+                service_unit_tmp="$(mktemp)"
+                if ! _fetch_repo_file "${script_ref}" "${service_unit_name}" "${service_unit_tmp}" \
+                    || ! _install_xui_service_unit "${service_unit_tmp}" "false"; then
+                    rm -f "${service_unit_tmp}"
                     echo -e "${red}Failed to install lxgate.service from GitHub (${script_ref}) -- the release tarball did not ship one either${plain}"
                     exit 1
                 fi
+                rm -f "${service_unit_tmp}"
             fi
         fi
         chown root:root ${xui_service}/lxgate.service > /dev/null 2>&1

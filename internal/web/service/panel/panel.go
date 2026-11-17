@@ -20,6 +20,7 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
+	"github.com/mhsanaei/3x-ui/v3/internal/release"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/version"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/global"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/service"
@@ -140,7 +141,7 @@ func (s *PanelService) GetUpdateInfo() (*PanelUpdateInfo, error) {
 	}
 	current := config.GetBaseVersion()
 	return &PanelUpdateInfo{
-		Channel:         "stable",
+		Channel:         release.ChannelStable,
 		CurrentVersion:  current,
 		LatestVersion:   latest,
 		UpdateAvailable: isNewerVersion(latest, current),
@@ -148,29 +149,33 @@ func (s *PanelService) GetUpdateInfo() (*PanelUpdateInfo, error) {
 }
 
 // devChannelActive reports whether self-update should track the rolling dev
-// release. It is driven solely by the opt-in setting so the panel can
-// cross-grade a stable build onto the dev channel once the user enables it;
-// nothing updates without an explicit user action, so an unattended stable
-// binary with the toggle off stays on the stable channel.
+// release. The update channel saved in the panel settings is the single source
+// of truth; the legacy devChannelEnable boolean is folded into it by
+// SettingService.GetUpdateChannel so both the System page's channel selector and
+// the overview's dev switch move the panel together.
 func devChannelActive() bool {
-	enabled, err := (&service.SettingService{}).GetDevChannelEnable()
-	return err == nil && enabled
+	channel, err := (&service.SettingService{}).GetUpdateChannel()
+	if err != nil {
+		enabled, legacyErr := (&service.SettingService{}).GetDevChannelEnable()
+		return legacyErr == nil && enabled
+	}
+	return channel == release.ChannelDev
 }
 
 // getDevUpdateInfo compares the running commit against the commit recorded in the
 // rolling dev release.
 func getDevUpdateInfo() (*PanelUpdateInfo, error) {
-	release, err := fetchPanelRelease(devReleaseTag)
+	info, err := fetchPanelRelease(devReleaseTag)
 	if err != nil {
 		return nil, err
 	}
-	latestCommit := extractReleaseCommit(release)
+	latestCommit := extractReleaseCommit(info)
 	if latestCommit == "" {
 		return nil, fmt.Errorf("dev release commit is unknown")
 	}
 	currentCommit := config.GetBuildCommit()
 	return &PanelUpdateInfo{
-		Channel:         "dev",
+		Channel:         release.ChannelDev,
 		CurrentVersion:  config.GetPanelVersion(),
 		CurrentCommit:   shortCommit(currentCommit),
 		LatestCommit:    shortCommit(latestCommit),
@@ -247,6 +252,11 @@ func (s *PanelService) startUpdate(useDev bool) (int64, error) {
 	if useDev {
 		updateTag = devReleaseTag
 	}
+	// The release repository is private. The token the operator saved in the
+	// update settings is handed to update.sh both in the environment and as the
+	// owners-only file the script reads, so the asset download and the checksum
+	// sidecar can authenticate even from a fresh shell.
+	token, _ := (&service.SettingService{}).GetGithubToken()
 	updateScript := fmt.Sprintf("set -e; trap 'rm -f %s' EXIT; %s %s", shellQuote(scriptPath), shellQuote(bash), shellQuote(scriptPath))
 	runIDEnv := "XUI_UPDATE_RUN_ID=" + strconv.FormatInt(runID, 10)
 	statusFileEnv := "XUI_UPDATE_STATUS_FILE=" + statusFile
@@ -256,6 +266,10 @@ func (s *PanelService) startUpdate(useDev bool) (int64, error) {
 	// proxy resolves GitHub's hostnames, since this server's own DNS may be filtered.
 	egressEnv := "XUI_UPDATE_PROXY=" + strings.Replace((&service.SettingService{}).PanelEgressProxyURL(), "socks5://", "socks5h://", 1)
 	proxyEnv := updateProxyEnvVars()
+	tokenEnvs := []string{}
+	if token != "" {
+		tokenEnvs = append(tokenEnvs, "XUI_GITHUB_TOKEN="+token, "LXGATE_GITHUB_TOKEN="+token)
+	}
 
 	if systemdRun, err := exec.LookPath("systemd-run"); err == nil {
 		unitName := fmt.Sprintf("lxgate-web-update-%d", time.Now().Unix())
@@ -270,6 +284,9 @@ func (s *PanelService) startUpdate(useDev bool) (int64, error) {
 			"--setenv", egressEnv,
 		}
 		for _, kv := range proxyEnv {
+			args = append(args, "--setenv", kv)
+		}
+		for _, kv := range tokenEnvs {
 			args = append(args, "--setenv", kv)
 		}
 		args = append(args, bash, "-lc", updateScript)
@@ -300,6 +317,7 @@ func (s *PanelService) startUpdate(useDev bool) (int64, error) {
 		repoEnv,
 		egressEnv,
 	)
+	cmd.Env = append(cmd.Env, tokenEnvs...)
 	setDetachedProcess(cmd)
 	if err := cmd.Start(); err != nil {
 		_ = os.Remove(scriptPath)
@@ -392,14 +410,36 @@ func panelUpdaterURL() string {
 	return config.GetRawBaseURL() + "/main/update.sh"
 }
 
+// panelUpdaterAPIURL is the same file through the GitHub contents API. The raw
+// host cannot read a private repository, so whenever a release token is
+// configured the updater is fetched from here with that token instead.
+func panelUpdaterAPIURL() string {
+	return strings.TrimSuffix(config.GetReleasesAPIURL(), "/releases") + "/contents/update.sh?ref=main"
+}
+
 func downloadPanelUpdater() (string, error) {
+	token, _ := (&service.SettingService{}).GetGithubToken()
+	return downloadPanelUpdaterWithToken(token)
+}
+
+func downloadPanelUpdaterWithToken(token string) (string, error) {
 	if !config.IsReleaseRepoConfigured() {
 		return "", errReleaseRepoNotConfigured
 	}
+	url := panelUpdaterURL()
+	if token != "" {
+		url = panelUpdaterAPIURL()
+	}
 	client := (&service.SettingService{}).NewProxiedHTTPClient(15 * time.Second)
-	req, reqErr := http.NewRequestWithContext(context.Background(), http.MethodGet, panelUpdaterURL(), nil)
+	req, reqErr := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if reqErr != nil {
 		return "", fmt.Errorf("download panel updater: %w", reqErr)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/vnd.github.raw")
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+		req.Header.Set("User-Agent", "LxGate-Panel")
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -453,6 +493,8 @@ func fetchLatestPanelVersion() (string, error) {
 
 // fetchPanelRelease fetches a release from GitHub. An empty tag resolves the
 // latest stable release; a non-empty tag (e.g. dev-latest) resolves that tag.
+// The release repository is private, so the token saved in the update settings
+// (or GITHUB_TOKEN in the environment) is sent along.
 func fetchPanelRelease(tag string) (*service.Release, error) {
 	if !config.IsReleaseRepoConfigured() {
 		return nil, errReleaseRepoNotConfigured
@@ -465,6 +507,14 @@ func fetchPanelRelease(tag string) (*service.Release, error) {
 	req, reqErr := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if reqErr != nil {
 		return nil, reqErr
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("User-Agent", "LxGate-Panel")
+	if token, _ := (&service.SettingService{}).GetGithubToken(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	} else if envToken := firstNonEmptyEnv("GITHUB_TOKEN", "GITHUB_API_TOKEN"); envToken != "" {
+		req.Header.Set("Authorization", "Bearer "+envToken)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -558,4 +608,16 @@ func isNewerVersion(latest string, current string) bool {
 
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+// firstNonEmptyEnv returns the first non-empty environment value among keys.
+// The release token may live in GITHUB_TOKEN or GITHUB_API_TOKEN when an
+// operator prefers the service environment over the panel setting.
+func firstNonEmptyEnv(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return ""
 }

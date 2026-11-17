@@ -13,8 +13,14 @@ function readBool(key: string, fallback: boolean): boolean {
 }
 
 function applyDom(isDark: boolean, isUltra: boolean) {
+  // The palette variables are read by `html` itself (its background is what
+  // shows below a short page and while overscrolling), so the theme class has
+  // to be on the document element as well as on the body.
+  const theme = isDark ? 'dark' : 'light';
+  document.documentElement.classList.remove('dark', 'light');
+  document.documentElement.classList.add(theme);
   document.body.classList.remove('dark', 'light');
-  document.body.classList.add(isDark ? 'dark' : 'light');
+  document.body.classList.add(theme);
   // Native scrollbars read color-scheme, not the body class.
   document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
   if (isUltra) {

@@ -1,6 +1,9 @@
+/* The sidebar is a normal flex column, not a floating layer: antd gives the
+   Sider its width (232px expanded, 76px rail) and this wrapper follows it, so
+   the content shell beside it is pushed instead of being covered. */
 .ant-sidebar {
-  flex: 0 0 var(--sider-rail, 72px);
-  width: var(--sider-rail, 72px);
+  flex: 0 0 auto;
+  width: auto;
   position: relative;
   z-index: 210;
 }
@@ -12,8 +15,12 @@
   align-self: flex-start;
 }
 
-.ant-sidebar:not(.sidebar-pinned) > .ant-layout-sider:not(.ant-layout-sider-collapsed) {
-  box-shadow: 0 0 32px rgba(0, 0, 0, 0.22);
+/* The expanding sidebar must be able to take room from the content column, and
+   the content column must be allowed to shrink so wide tables scroll instead of
+   pushing the layout sideways. */
+.content-shell {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .sider-nav .ant-menu-item .anticon,
@@ -35,12 +42,40 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  height: 58px;
-  padding: 0 16px 0 24px;
+  height: 60px;
+  padding: 0 12px 0 20px;
   border-bottom: 1px solid var(--ant-color-border-secondary);
   user-select: none;
   white-space: nowrap;
   overflow: hidden;
+}
+
+/* The rail shows a monogram badge instead of a wordmark -- the old layout
+   squeezed the full name into 72px and clipped it to "LxGa". */
+.sider-brand.is-rail {
+  justify-content: center;
+  padding: 0;
+}
+
+.brand-text {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+  color: var(--ant-color-text);
+  line-height: 1.1;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #4c8dff, #7c5cff);
+  box-shadow: 0 4px 12px rgba(76, 141, 255, 0.32);
 }
 
 .brand-block {
@@ -50,18 +85,33 @@
   line-height: 1.1;
 }
 
-.brand-actions {
+.sidebar-collapse {
   display: inline-flex;
   align-items: center;
-  gap: 0;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ant-color-text-secondary);
+  cursor: pointer;
   flex-shrink: 0;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
 }
 
-.brand-actions .sidebar-pin,
-.brand-actions .sidebar-docs,
-.brand-actions .sidebar-theme-cycle {
-  width: 26px;
-  height: 26px;
+.sidebar-collapse:hover,
+.sidebar-collapse:focus-visible {
+  background-color: color-mix(in srgb, var(--ant-color-primary) 12%, transparent);
+  color: var(--ant-color-primary);
+  outline: none;
+}
+
+.sidebar-collapse .anticon {
+  font-size: 16px;
 }
 
 .sidebar-docs {
@@ -213,38 +263,27 @@
 
 .sider-footer {
   flex: 0 0 auto;
-  padding: 8px 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px 10px;
+  border-top: 1px solid var(--ant-color-border-secondary);
 }
 
-.sidebar-pin {
-  display: inline-flex;
+.sider-tools {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--ant-color-text-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition:
-    background-color 0.2s,
-    transform 0.15s,
-    color 0.2s;
+  gap: 2px;
 }
 
-.sidebar-pin:hover,
-.sidebar-pin:focus-visible {
-  background-color: color-mix(in srgb, var(--ant-color-primary) 10%, transparent);
-  color: var(--ant-color-primary);
-  transform: scale(1.08);
-  outline: none;
+.ant-layout-sider-collapsed .sider-footer {
+  align-items: center;
+  padding: 8px 0 12px;
 }
 
-.sidebar-pin .anticon {
-  font-size: 16px;
+.ant-layout-sider-collapsed .sider-tools {
+  flex-direction: column;
+  gap: 4px;
 }
 
 .sider-version {

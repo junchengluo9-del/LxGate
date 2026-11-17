@@ -128,7 +128,9 @@
     "unpinSidebar": "取消固定侧边栏",
     "subFormats": "Sub Formats",
     "vpngate": "VPNGate 出口",
-    "system": "系统与更新"
+    "system": "系统与更新",
+    "collapseSidebar": "收起侧栏",
+    "expandSidebar": "展开侧栏"
   },
   "pages": {
     "login": {
@@ -2725,7 +2727,24 @@
       },
       "toasts": {
         "updateStarted": "已开始更新"
-      }
+      },
+      "updateSettingsTitle": "更新设置",
+      "updateSettingsHint": "LxGate 的发布仓库是私有仓库：在这里保存一个只读 GitHub Token，面板才能读取发布版本并下载更新。",
+      "channelLabel": "更新通道",
+      "channelHint": "稳定版跟随最新正式发布；开发版跟随最新提交的滚动构建（dev-latest）。",
+      "channelStable": "稳定版",
+      "channelDev": "开发版",
+      "channelSaved": "更新通道已切换",
+      "tokenLabel": "GitHub Token",
+      "tokenHint": "只读（contents: read）权限的仓库 Token，保存在本服务器，之后不会再完整显示。",
+      "tokenPlaceholder": "ghp_… 或 github_pat_…",
+      "tokenSaved": "GitHub Token 已保存",
+      "tokenConfigured": "已配置：{mask}",
+      "tokenNotConfigured": "尚未配置 Token",
+      "tokenSave": "保存 Token",
+      "tokenClear": "清除",
+      "tokenCleared": "GitHub Token 已清除",
+      "tokenRequiredHint": "私有仓库必须先填写 Token，才能检查更新。"
     }
   },
   "tgbot": {
