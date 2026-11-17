@@ -1213,6 +1213,121 @@ def stop_active_openvpn() -> None:
 def active_openvpn_running() -> bool:
     return active_openvpn_process is not None and active_openvpn_process.poll() is None
 
+IP_TYPE_LABELS = {
+    "residential": "住宅 IP",
+    "mobile": "移动网络",
+    "hosting": "机房 IP",
+}
+
+# What the last policy warning said, so a mismatch that keeps its node does not
+# write the same log line once per detection cycle.
+_last_policy_warning = ""
+
+def normalize_ip_type(value: Any) -> str:
+    """Return the canonical ip_type (residential/mobile/hosting) or "" when unknown."""
+    text = str(value or "").strip().lower()
+    return text if text in IP_TYPE_LABELS else ""
+
+def node_ip_type_label(node: dict[str, Any]) -> str:
+    return IP_TYPE_LABELS.get(normalize_ip_type(node.get("ip_type")), "未知")
+
+def node_matches_ip_type(node: dict[str, Any], routing_ip_type: str) -> bool:
+    """"residential" means residential and mobile: both are consumer networks.
+
+    An unknown ip_type matches neither filter, the same rule the aimilivpn panel
+    used, so picking "住宅 IP" never quietly keeps a datacenter node.
+    """
+    wanted = str(routing_ip_type or "all").strip().lower()
+    if wanted in ("", "all"):
+        return True
+    actual = normalize_ip_type(node.get("ip_type"))
+    if wanted == "residential":
+        return actual in ("residential", "mobile")
+    if wanted == "hosting":
+        return actual == "hosting"
+    return True
+
+def node_matches_country(node: dict[str, Any], target: str) -> bool:
+    """Match a node against a country given as short code, English or Chinese name.
+
+    The panel sends the two-letter code from the node table, while this engine's
+    own page and older configs stored the Chinese country name; accepting all
+    three keeps both callers and every existing ui_auth.json working.
+    """
+    wanted = str(target or "").strip()
+    if not wanted:
+        return True
+    short = str(node.get("country_short") or "").strip().upper()
+    country = str(node.get("country") or "").strip()
+    if short and short == wanted.upper():
+        return True
+    if country and country.upper() == wanted.upper():
+        return True
+    if country and vpn_utils.COUNTRY_TRANSLATIONS.get(wanted, "") == country:
+        return True
+    return False
+
+def node_matches_routing_policy(node: dict[str, Any], ui_cfg: dict[str, Any]) -> bool:
+    """Whether the live connection may stay on this node under the saved policy."""
+    mode = str(ui_cfg.get("routing_mode") or "auto")
+    if mode == "fixed_ip":
+        fixed_id = str(ui_cfg.get("fixed_node_id") or "").strip()
+        return bool(fixed_id) and node.get("id") == fixed_id
+    if mode == "fixed_region" and not node_matches_country(node, ui_cfg.get("force_country", "")):
+        return False
+    return node_matches_ip_type(node, ui_cfg.get("routing_ip_type", "all"))
+
+def routing_policy_label(ui_cfg: dict[str, Any]) -> str:
+    """Human label for the saved policy, e.g. "JP · 住宅 IP"."""
+    parts: list[str] = []
+    mode = str(ui_cfg.get("routing_mode") or "auto")
+    country = str(ui_cfg.get("force_country") or "").strip()
+    if mode == "fixed_region" and country:
+        parts.append(country)
+    ip_type = str(ui_cfg.get("routing_ip_type") or "all").strip().lower()
+    if ip_type in ("residential", "hosting"):
+        parts.append(IP_TYPE_LABELS[ip_type])
+    return " · ".join(parts)
+
+def select_routing_candidates(
+    nodes: list[dict[str, Any]],
+    ui_cfg: dict[str, Any],
+    *,
+    available_only: bool = True,
+    exclude_id: str = "",
+) -> list[dict[str, Any]]:
+    """Nodes the saved routing policy accepts, best first.
+
+    One place decides what "matches" means for picking a node, so the panel's
+    apply-routing feedback, the periodic enforcement and the failover switch
+    cannot drift apart.
+    """
+    mode = str(ui_cfg.get("routing_mode") or "auto")
+    ip_type = ui_cfg.get("routing_ip_type", "all")
+    country = ui_cfg.get("force_country", "")
+
+    pool = [n for n in nodes if n.get("id") and n.get("id") != exclude_id]
+    if available_only:
+        pool = [n for n in pool if n.get("probe_status") == "available"]
+    if mode == "fixed_region" and country:
+        pool = [n for n in pool if node_matches_country(n, country)]
+    if mode == "favorites":
+        fav_ids = set(ui_cfg.get("favorite_node_ids") or [])
+        fav_candidates = [n for n in pool if n.get("id") in fav_ids]
+        if fav_candidates:
+            pool = fav_candidates
+        elif not ui_cfg.get("fav_fail_fallback", True):
+            pool = []
+    pool = [n for n in pool if node_matches_ip_type(n, ip_type)]
+    pool.sort(
+        key=lambda n: (
+            0 if normalize_ip_type(n.get("ip_type")) in ("residential", "mobile") else 1,
+            parse_int(n.get("latency_ms")) or 999999,
+            -parse_int(n.get("score")),
+        )
+    )
+    return pool
+
 def sort_all_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     available_nodes = sorted(
         [n for n in nodes if n.get("probe_status") == "available" or n.get("active")],
@@ -1417,7 +1532,12 @@ def test_multiple_nodes(node_ids: list[str]) -> list[dict[str, Any]]:
         for n in current_nodes:
             nid = n.get("id")
             if nid in updated_nodes_map:
-                n.update(updated_nodes_map[nid])
+                patch = updated_nodes_map[nid]
+                # A failed probe learns nothing about the IP; without this the
+                # empty ip_type in the probe result would erase the lookup the
+                # panel's type filter depends on.
+                carry_ip_metadata(patch, n)
+                n.update(patch)
         sorted_nodes = sort_all_nodes(current_nodes)
         write_json(NODES_FILE, sorted_nodes)
         
@@ -1441,40 +1561,11 @@ def auto_switch_node(attempt: int = 0) -> None:
         print("[自动切换] 当前处于固定 IP 模式，不进行自动连接或切换。", flush=True)
         return
 
-    # Find the next best available node
+    # Find the next best available node the saved policy accepts.
     with lock:
         nodes = read_nodes()
-        candidates = [
-            n for n in nodes 
-            if n.get("probe_status") == "available" 
-            and not n.get("active")
-        ]
-        
-        if routing_mode == "fixed_region" and target_country:
-            candidates = [
-                n for n in candidates 
-                if n.get("country") == target_country 
-                or vpn_utils.COUNTRY_TRANSLATIONS.get(n.get("country", ""), n.get("country", "")) == target_country
-            ]
-        if routing_mode == "favorites":
-            fav_ids = set(ui_cfg.get("favorite_node_ids", []))
-            fav_candidates = [n for n in candidates if n.get("id") in fav_ids]
-            if fav_candidates:
-                candidates = fav_candidates
-            else:
-                fav_fail_fallback = ui_cfg.get("fav_fail_fallback", True)
-                if not fav_fail_fallback:
-                    candidates = []
+        candidates = select_routing_candidates(nodes, ui_cfg, exclude_id=active_openvpn_node_id or "")
             
-        # Apply routing_ip_type filter
-        routing_ip_type = ui_cfg.get("routing_ip_type", "all")
-        if routing_ip_type == "residential":
-            candidates = [n for n in candidates if n.get("ip_type") in ("residential", "mobile")]
-        elif routing_ip_type == "hosting":
-            candidates = [n for n in candidates if n.get("ip_type") == "hosting"]
-            
-        candidates.sort(key=lambda n: (parse_int(n.get("latency_ms")) or 999999, -parse_int(n.get("score"))))
-        
     if candidates:
         next_node = candidates[0]
         msg = f"当前连接已失效或代理连通性检测失败，正在自动切换至最佳备用节点: {next_node['id']}"
@@ -1510,9 +1601,283 @@ def auto_switch_node(attempt: int = 0) -> None:
         
         threading.Thread(target=bg_fetch_and_switch, daemon=True).start()
 
+def carry_ip_metadata(target: dict[str, Any], source: dict[str, Any]) -> None:
+    """Copy what is known about a node's IP when a fresher record lost it.
+
+    A probe result and a fetched CSV row both start with an empty ip_type, so
+    any write of them over an enriched node would erase the IP type, ASN and
+    owner the panel filters on.
+    """
+    for key in ("ip_type", "owner", "asn", "as_name", "location", "quality"):
+        if not target.get(key) and source.get(key):
+            target[key] = source[key]
+
+def merge_candidate_nodes(
+    candidates: list[dict[str, Any]],
+    previous_nodes: list[dict[str, Any]],
+    active_node: dict[str, Any] | None = None,
+    limit: int = 1000,
+) -> list[dict[str, Any]]:
+    """Merge a fresh CSV batch into the node table without losing what we learned.
+
+    A fetched row knows only the VPNGate CSV columns, so ip_type, ASN and owner
+    are empty; copying them from the previous table keeps the IP type the panel
+    filters on from disappearing on every fetch cycle. Probe results still reset,
+    because the cycle re-tests every node anyway.
+    """
+    known: dict[str, dict[str, Any]] = {}
+    for node in previous_nodes:
+        if node.get("id"):
+            known[str(node["id"])] = node
+
+    merged: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    if active_node:
+        merged.append(active_node)
+        seen_ids.add(active_node["id"])
+
+    for cand in candidates:
+        node_id = cand.get("id")
+        if not node_id or node_id in seen_ids:
+            continue
+        previous = known.get(str(node_id))
+        if previous:
+            carry_ip_metadata(cand, previous)
+        merged.append(cand)
+        seen_ids.add(str(node_id))
+    return merged[:limit]
+
+def enrich_missing_ip_types(nodes: list[dict[str, Any]], limit: int = 250) -> int:
+    """Fill ip_type for nodes that were never probed, from vpn_utils' IP cache.
+
+    A node only learned its ip_type after a successful OpenVPN probe, which left
+    most of the list on "unknown" — and an unknown node satisfies neither the
+    residential nor the hosting filter. ip-api answers in batches of 100 and the
+    answer is cached for a week, so one call per fetch cycle covers the list
+    without touching the probe budget.
+    """
+    targets = [n for n in nodes if not normalize_ip_type(n.get("ip_type"))][:limit]
+    if not targets:
+        return 0
+    try:
+        vpn_utils.enrich_ip_info(targets)
+    except Exception as exc:
+        print(f"[IP 类型] 批量查询失败: {exc}", flush=True)
+        return 0
+    resolved = {n.get("id"): n.get("ip_type") for n in targets if normalize_ip_type(n.get("ip_type"))}
+    if not resolved:
+        return 0
+    with lock:
+        current = read_nodes()
+        changed = 0
+        for node in current:
+            ip_type = resolved.get(node.get("id"))
+            if ip_type and not normalize_ip_type(node.get("ip_type")):
+                node["ip_type"] = ip_type
+                changed += 1
+        if changed:
+            write_json(NODES_FILE, current)
+    if changed:
+        print(f"[IP 类型] 已为 {changed} 个节点补充 IP 类型", flush=True)
+        log_to_json("INFO", "Main", f"已为 {changed} 个节点补充 IP 类型（住宅/移动/机房）")
+    return changed
+
+def schedule_routing_switch(node_id: str, ui_cfg: dict[str, Any], reason: str) -> None:
+    """Connect to node_id in a worker so the routing call answers immediately."""
+    def worker() -> None:
+        time.sleep(0.5)
+        try:
+            log_to_json("INFO", "VPN", f"{reason}，正在连接 {node_id}")
+            connect_node(node_id)
+        except Exception as exc:
+            msg = f"{reason}，但连接 {node_id} 失败: {exc}"
+            print(f"[路由策略] {msg}", flush=True)
+            log_to_json("WARNING", "VPN", msg)
+    threading.Thread(target=worker, daemon=True, name="routing-policy-switch").start()
+
+def apply_routing_policy(ui_cfg: dict[str, Any]) -> dict[str, Any]:
+    """Re-evaluate the live connection against a just-saved routing policy.
+
+    Returns the panel's feedback payload: a stable `code` the UI translates, the
+    Chinese `message` as a fallback, a `level` for the toast and the values the
+    sentence names. Reconnection runs in a worker thread; this call never blocks
+    on OpenVPN.
+    """
+    mode = str(ui_cfg.get("routing_mode") or "auto")
+    ip_type = str(ui_cfg.get("routing_ip_type") or "all")
+    policy = routing_policy_label(ui_cfg)
+    base: dict[str, Any] = {
+        "policy": policy,
+        "mode": mode,
+        "country": str(ui_cfg.get("force_country") or "").strip().upper(),
+        "ip_type": ip_type,
+        "node": "",
+        "node_ip_type": "",
+        "candidates": 0,
+    }
+
+    if mode == "fixed_ip":
+        return {
+            **base,
+            "code": "saved_fixed_ip",
+            "level": "success",
+            "message": "路由已保存。固定节点模式由你指定的节点决定，不受国家与 IP 类型筛选影响。",
+        }
+    if not ui_cfg.get("connection_enabled", True):
+        return {
+            **base,
+            "code": "saved_disabled",
+            "level": "info",
+            "message": f"路由已保存（{policy or '不限条件'}）。当前已关闭自动连接，面板不会主动重连。",
+        }
+
+    nodes = read_nodes()
+    active = None
+    if active_openvpn_node_id and active_openvpn_running():
+        active = next((n for n in nodes if n.get("id") == active_openvpn_node_id), None)
+
+    if active is not None and node_matches_routing_policy(active, ui_cfg):
+        return {
+            **base,
+            "code": "saved_policy_match",
+            "level": "success",
+            "node": active.get("id", ""),
+            "node_ip_type": normalize_ip_type(active.get("ip_type")),
+            "message": (
+                f"路由已保存（{policy or '不限条件'}）。当前节点 {active.get('id')}（{node_ip_type_label(active)}）"
+                "符合新策略，无需切换。"
+            ),
+        }
+
+    candidates = select_routing_candidates(nodes, ui_cfg, exclude_id=active.get("id", "") if active else "")
+    base["candidates"] = len(candidates)
+    best = candidates[0] if candidates else None
+    if best:
+        base["node"] = str(best.get("id") or "")
+        base["node_ip_type"] = normalize_ip_type(best.get("ip_type"))
+
+    if active is not None:
+        # The node that is up no longer fits (country, IP type or the pinned id).
+        if best and (is_connecting or maintenance_lock.locked()):
+            return {
+                **base,
+                "code": "saved_pending_switch",
+                "level": "info",
+                "message": (
+                    f"路由已保存（{policy}）。当前节点 {active.get('id')} 不符合新策略，"
+                    f"节点检测结束后会自动切换到 {best.get('id')}（{node_ip_type_label(best)}）。"
+                ),
+            }
+        if best:
+            schedule_routing_switch(
+                base["node"],
+                ui_cfg,
+                f"路由策略已改为 {policy}，当前节点 {active.get('id')} 不再符合",
+            )
+            return {
+                **base,
+                "code": "saved_switching",
+                "level": "info",
+                "message": (
+                    f"路由已保存（{policy}）。当前节点 {active.get('id')} 不符合新策略，"
+                    f"正在切换到 {best.get('id')}（{node_ip_type_label(best)}）。"
+                ),
+            }
+        return {
+            **base,
+            "code": "saved_no_match_kept",
+            "level": "warning",
+            "node": str(active.get("id") or ""),
+            "node_ip_type": normalize_ip_type(active.get("ip_type")),
+            "message": (
+                f"路由已保存（{policy}），但当前节点池暂无符合该条件的可用节点；"
+                f"暂时保留当前节点 {active.get('id')}（{node_ip_type_label(active)}），出现符合条件的节点后会自动切换。"
+            ),
+        }
+
+    if best:
+        if is_connecting or maintenance_lock.locked():
+            return {
+                **base,
+                "code": "saved_pending_switch",
+                "level": "info",
+                "message": f"路由已保存（{policy}）。节点检测正在进行，结束后会自动连接 {best.get('id')}。",
+            }
+        schedule_routing_switch(base["node"], ui_cfg, f"路由策略已改为 {policy}")
+        return {
+            **base,
+            "code": "saved_connecting",
+            "level": "info",
+            "message": f"路由已保存（{policy}），正在按新策略连接 {best.get('id')}（{node_ip_type_label(best)}）。",
+        }
+
+    return {
+        **base,
+        "code": "saved_no_match",
+        "level": "warning",
+        "message": f"路由已保存（{policy}），但当前节点池暂无符合该条件的可用节点。",
+    }
+
+def enforce_routing_policy_after_cycle() -> None:
+    """Put the live connection back on a node the saved policy accepts.
+
+    Runs after every detection cycle so a policy saved while no matching node
+    existed is honoured as soon as one shows up. A missing replacement keeps
+    the current node (and says so once): dropping the tunnel would leave the
+    operator with neither the old exit nor a new one.
+    """
+    global is_connecting, _last_policy_warning
+    ui_cfg = load_ui_config()
+    if not ui_cfg.get("connection_enabled", True):
+        return
+    if str(ui_cfg.get("routing_mode") or "auto") == "fixed_ip":
+        return
+    if not (active_openvpn_node_id and active_openvpn_running()):
+        return
+
+    nodes = read_nodes()
+    active = next((n for n in nodes if n.get("id") == active_openvpn_node_id), None)
+    if not active or node_matches_routing_policy(active, ui_cfg):
+        _last_policy_warning = ""
+        return
+
+    policy = routing_policy_label(ui_cfg)
+    candidates = select_routing_candidates(nodes, ui_cfg, exclude_id=active.get("id"))
+    if not candidates:
+        warning_key = f"{policy}|{active.get('id')}"
+        if warning_key != _last_policy_warning:
+            _last_policy_warning = warning_key
+            msg = (
+                f"[路由策略] 当前节点 {active.get('id')}（{node_ip_type_label(active)}）不符合策略 {policy}，"
+                "但暂无符合条件的可用节点，暂时保留当前连接。"
+            )
+            print(f"{msg}", flush=True)
+            log_to_json("WARNING", "VPN", msg)
+        return
+
+    _last_policy_warning = ""
+    next_node = candidates[0]
+    msg = (
+        f"[路由策略] 当前节点不符合策略 {policy}，自动切换至 {next_node.get('id')}"
+        f"（{node_ip_type_label(next_node)}）"
+    )
+    print(f"{msg}", flush=True)
+    log_to_json("INFO", "VPN", msg)
+    is_connecting = False
+    try:
+        connect_node(next_node["id"])
+    except Exception as exc:
+        err = f"[路由策略] 按策略切换 {next_node.get('id')} 失败: {exc}"
+        print(f"{err}", flush=True)
+        log_to_json("WARNING", "VPN", err)
+    finally:
+        is_connecting = True
+
 def connect_node(node_id: str) -> str:
     global active_openvpn_process, active_openvpn_node_id, is_connecting
+
     node_id = str(node_id or "").strip()
+
     if not node_id:
         raise ValueError("Node id is required")
     stopped_existing = False
@@ -1690,24 +2055,11 @@ def maintain_valid_nodes(force: bool = False) -> str:
 
         with lock:
             active_node = None
+            current_nodes = read_nodes()
             if active_openvpn_node_id:
-                current_nodes = read_nodes()
                 active_node = next((n for n in current_nodes if n.get("id") == active_openvpn_node_id), None)
-                
-            merged: list[dict[str, Any]] = []
-            seen_ids: set[str] = set()
-            
-            if active_node:
-                merged.append(active_node)
-                seen_ids.add(active_node["id"])
-                
-            for cand in candidates:
-                if cand["id"] not in seen_ids:
-                    merged.append(cand)
-                    seen_ids.add(cand["id"])
-                    
-            if len(merged) > 1000:
-                merged = merged[:1000]
+
+            merged = merge_candidate_nodes(candidates, current_nodes, active_node)
                 
             for n in merged:
                 config_path = Path(n["config_file"])
@@ -1724,6 +2076,14 @@ def maintain_valid_nodes(force: bool = False) -> str:
             current_nodes = read_nodes()
             to_test = [n for n in current_nodes if not n.get("active")]
             to_test_ids = [n["id"] for n in to_test]
+
+        # Give every node an IP type before probing: the panel's type filter and
+        # the routing policy both need it, and a probed node alone would leave
+        # the rest of the list on "unknown".
+        try:
+            enrich_missing_ip_types(current_nodes)
+        except Exception as enrich_exc:
+            print(f"[IP 类型] 补充失败: {enrich_exc}", flush=True)
             
         msg = f"开始对列表中所有候选节点进行周期连通性与延迟测试，待检测节点共 {len(to_test_ids)} 个"
         print(f"[周期检测] {msg}", flush=True)
@@ -1760,35 +2120,21 @@ def maintain_valid_nodes(force: bool = False) -> str:
                 connection_enabled = ui_cfg.get("connection_enabled", True)
                 if connection_enabled:
                     routing_mode = ui_cfg.get("routing_mode", "auto")
-                    target_country = ui_cfg.get("force_country", "")
                     
                     if routing_mode != "fixed_ip":
-                        available_candidates = [n for n in merged if n.get("probe_status") == "available"]
-                        if routing_mode == "fixed_region" and target_country:
-                            available_candidates = [
-                                n for n in available_candidates 
-                                if n.get("country") == target_country 
-                                or vpn_utils.COUNTRY_TRANSLATIONS.get(n.get("country", ""), n.get("country", "")) == target_country
-                            ]
-                        elif routing_mode == "favorites":
-                            fav_ids = set(ui_cfg.get("favorite_node_ids", []))
-                            fav_candidates = [n for n in available_candidates if n.get("id") in fav_ids]
-                            if fav_candidates:
-                                available_candidates = fav_candidates
-                            else:
-                                fav_fail_fallback = ui_cfg.get("fav_fail_fallback", True)
-                                if not fav_fail_fallback:
-                                    available_candidates = []
-                        
-                        # Apply routing_ip_type filter for auto-connect
-                        routing_ip_type = ui_cfg.get("routing_ip_type", "all")
-                        if routing_ip_type == "residential":
-                            available_candidates = [n for n in available_candidates if n.get("ip_type") in ("residential", "mobile")]
-                        elif routing_ip_type == "hosting":
-                            available_candidates = [n for n in available_candidates if n.get("ip_type") == "hosting"]
-                        
+                        available_candidates = select_routing_candidates(merged, ui_cfg)
                         if available_candidates:
                             auto_switch_node()
+
+        # A running connection that no longer fits the saved policy (the operator
+        # applied a new country or IP type while it was up) is moved onto a
+        # matching node as soon as one exists. Outside the lock: connecting runs
+        # OpenVPN and must not block the node endpoint.
+        if active_openvpn_running():
+            try:
+                enforce_routing_policy_after_cycle()
+            except Exception as policy_exc:
+                print(f"[路由策略] 周期校验失败: {policy_exc}", flush=True)
 
         valid_nodes_count = len([n for n in merged if n.get("probe_status") == "available"])
         message = f"Fetched {len(candidates)} nodes. Tested {len(to_test_ids)} non-active nodes."
@@ -6893,8 +7239,20 @@ class Handler(BaseHTTPRequestHandler):
                 with lock:
                     DATA_DIR.mkdir(exist_ok=True, parents=True)
                     auth_file.write_text(json.dumps(ui_cfg, ensure_ascii=False, indent=2), encoding="utf-8")
-                
-                self.send_json({"ok": True, "message": "出站路由配置更新成功，已即时生效！"})
+
+                # Saving a policy is not the same as applying it: say what the
+                # new policy means for the node that is up right now, and switch
+                # when it no longer fits.
+                try:
+                    feedback = apply_routing_policy(ui_cfg)
+                except Exception as fb_exc:
+                    print(f"[路由策略] 评估失败: {fb_exc}", flush=True)
+                    feedback = {
+                        "code": "saved",
+                        "level": "success",
+                        "message": "出站路由配置更新成功，已即时生效！",
+                    }
+                self.send_json({"ok": True, "saved": True, **feedback})
             except Exception as exc:
                 self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return

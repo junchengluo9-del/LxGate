@@ -31,6 +31,7 @@ import {
   LinkOutlined,
   PoweroffOutlined,
   ReloadOutlined,
+  SearchOutlined,
   SettingOutlined,
   SwapOutlined,
   ThunderboltOutlined,
@@ -68,6 +69,8 @@ interface VpnGateNode {
   remote_port?: number;
   probe_status?: string;
   probe_message?: string;
+  /** residential / mobile / hosting; empty when the engine has not looked it up yet. */
+  ip_type?: string;
   active?: boolean;
   favorite?: boolean;
 }
@@ -148,6 +151,36 @@ interface LogEntry {
 const MODE_VALUES: RoutingMode[] = ['auto', 'fixed_region', 'fixed_ip', 'favorites'];
 const TAKEOVER_MODES: VpngateTakeoverMode[] = ['all', 'selected', 'manual'];
 
+/** Node list filters; every one of them narrows the table immediately. */
+type IpTypeFilter = 'all' | 'residential' | 'hosting';
+const IP_TYPE_FILTERS: IpTypeFilter[] = ['all', 'residential', 'hosting'];
+const IP_TYPE_KEYS = ['residential', 'mobile', 'hosting'] as const;
+
+const IP_TYPE_COLORS: Record<string, string> = {
+  residential: 'green',
+  mobile: 'geekblue',
+  hosting: 'orange',
+};
+
+/** The engine's answer to "apply routing": a code the UI can translate. */
+interface RoutingFeedback {
+  code?: string;
+  level?: 'success' | 'info' | 'warning';
+  message?: string;
+  policy?: string;
+  mode?: RoutingMode;
+  country?: string;
+  ip_type?: string;
+  node?: string;
+  node_ip_type?: string;
+  candidates?: number;
+}
+
+function nodeIpType(node: VpnGateNode) {
+  const value = (node.ip_type || '').toLowerCase();
+  return (IP_TYPE_KEYS as readonly string[]).includes(value) ? value : 'unknown';
+}
+
 // Nodes are polled while the page is open: the engine re-tests candidates in the
 // background and the table should follow without a manual refresh.
 const NODES_POLL_MS = 4000;
@@ -192,6 +225,9 @@ export default function VPNGatePage() {
   const [favFallback, setFavFallback] = useState(true);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [filter, setFilter] = useState('');
+  const [ipTypeFilter, setIpTypeFilter] = useState<IpTypeFilter>('all');
+  const [countryFilter, setCountryFilter] = useState('all');
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [draft, setDraft] = useState<TakeoverDraft | null>(null);
   const [draftDirty, setDraftDirty] = useState(false);
 
@@ -246,8 +282,18 @@ export default function VPNGatePage() {
   const [seeded, setSeeded] = useState(false);
   useEffect(() => {
     if (seeded || !state.routing_mode) return;
+    // The engine stores whatever the caller sent: this page saves the two-letter
+    // code, older configs hold the Chinese country name. Show the code so the
+    // select has a matching option, but keep an unknown value as it is.
+    const seedCountry = (raw?: string) => {
+      const value = (raw ?? '').trim();
+      if (!value) return '';
+      const upper = value.toUpperCase();
+      if (nodes.some((node) => (node.country_short || '').toUpperCase() === upper)) return upper;
+      return nodes.find((node) => node.country === value)?.country_short?.toUpperCase() ?? value;
+    };
     setMode(state.routing_mode);
-    setCountry(state.force_country ?? '');
+    setCountry(seedCountry(state.force_country));
     setIpType(state.routing_ip_type || 'all');
     setFavFallback(state.fav_fail_fallback !== false);
     setSeeded(true);
@@ -256,6 +302,7 @@ export default function VPNGatePage() {
     state.force_country,
     state.routing_ip_type,
     state.fav_fail_fallback,
+    nodes,
     seeded,
   ]);
 
@@ -276,11 +323,11 @@ export default function VPNGatePage() {
       if (!msg?.success) throw new Error(msg?.msg || t('somethingWentWrong'));
       return msg;
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
       messageApi.success(
         variables.url.includes('disconnect')
           ? t('pages.vpngate.toasts.disconnected')
-          : t('pages.vpngate.toasts.actionDone'),
+          : data?.msg || t('pages.vpngate.toasts.actionDone'),
       );
       invalidate();
     },
@@ -290,12 +337,55 @@ export default function VPNGatePage() {
     },
   });
 
-  const saveRouting = useCallback(() => {
-    action.mutate({
-      url: '/panel/api/vpngate/routing',
-      body: { mode, country, ipType, favFallback },
-    });
-  }, [action, mode, country, ipType, favFallback]);
+  // "Apply routing" answers with what the new policy means for the live node:
+  // kept, switching, or no node in the pool fits yet. Show that sentence rather
+  // than a generic "done", which made the button look like it did nothing.
+  const applyRouting = useMutation({
+    mutationFn: async () => {
+      const msg = await postVpngateJson<RoutingFeedback>('/panel/api/vpngate/routing', {
+        mode,
+        country,
+        ipType,
+        favFallback,
+      });
+      if (!msg?.success) throw new Error(msg?.msg || t('somethingWentWrong'));
+      return msg;
+    },
+    onSuccess: (msg) => {
+      const feedback: RoutingFeedback = msg?.obj ?? {};
+      const parts: string[] = [];
+      if (feedback.mode === 'fixed_region' && feedback.country) parts.push(feedback.country);
+      if (feedback.ip_type && feedback.ip_type !== 'all') {
+        parts.push(t(`pages.vpngate.ipTypes.${feedback.ip_type}`));
+      }
+      const policy = parts.join(' · ') || t('pages.vpngate.routingFeedback.anyPolicy');
+      const key = feedback.code ? `pages.vpngate.routingFeedback.${feedback.code}` : '';
+      const translated = key
+        ? t(key, {
+            policy,
+            node: feedback.node || '—',
+            nodeType:
+              feedback.node_ip_type && feedback.node_ip_type !== 'unknown'
+                ? t(`pages.vpngate.ipTypeTags.${feedback.node_ip_type}`)
+                : t('pages.vpngate.ipTypeTags.unknown'),
+            count: feedback.candidates ?? 0,
+          })
+        : '';
+      const text = translated && translated !== key ? translated : msg?.msg || feedback.message;
+      if (text) {
+        if (feedback.level === 'warning') messageApi.warning(text, 7);
+        else if (feedback.level === 'info') messageApi.info(text, 6);
+        else messageApi.success(text, 5);
+      } else {
+        messageApi.success(t('pages.vpngate.toasts.actionDone'));
+      }
+      invalidate();
+    },
+    onError: (error: Error) => {
+      messageApi.error(error.message);
+      invalidate();
+    },
+  });
 
   const connectTo = useCallback(
     (nodeId: string) => action.mutate({ url: '/panel/api/vpngate/connect', body: { id: nodeId } }),
@@ -369,6 +459,21 @@ export default function VPNGatePage() {
             <span>{node.country || '—'}</span>
           </Space>
         ),
+      },
+      {
+        title: t('pages.vpngate.columns.ipType'),
+        dataIndex: 'ip_type',
+        width: 108,
+        // Deliberately not responsive: the IP type is the column the operator
+        // asked for, so it stays on a phone even when other columns drop out.
+        render: (_value, node) => {
+          const key = nodeIpType(node);
+          return (
+            <Tag bordered={false} color={IP_TYPE_COLORS[key]} className={`vg-ip-type ${key}`}>
+              {t(`pages.vpngate.ipTypeTags.${key}`)}
+            </Tag>
+          );
+        },
       },
       {
         title: t('pages.vpngate.columns.host'),
@@ -828,8 +933,8 @@ export default function VPNGatePage() {
                       <Button
                         type="primary"
                         icon={<SwapOutlined />}
-                        loading={action.isPending}
-                        onClick={saveRouting}
+                        loading={applyRouting.isPending}
+                        onClick={() => applyRouting.mutate()}
                       >
                         {t('pages.vpngate.applyRouting')}
                       </Button>
@@ -848,14 +953,6 @@ export default function VPNGatePage() {
                   title={t('pages.vpngate.nodesTitle')}
                   extra={
                     <Space wrap>
-                      <Input
-                        allowClear
-                        placeholder={t('pages.vpngate.filterPlaceholder')}
-                        onChange={(event) => setFilter(event.target.value)}
-                        prefix={<ThunderboltOutlined />}
-                        size="small"
-                        style={{ width: 180 }}
-                      />
                       <Button
                         icon={<CloudDownloadOutlined />}
                         loading={action.isPending}
@@ -879,12 +976,53 @@ export default function VPNGatePage() {
                     </Space>
                   }
                 >
+                  <div className="vg-node-filters">
+                    <Input
+                      allowClear
+                      placeholder={t('pages.vpngate.filterPlaceholder')}
+                      onChange={(event) => setFilter(event.target.value)}
+                      prefix={<SearchOutlined />}
+                      className="vg-node-search"
+                    />
+                    <Select<IpTypeFilter>
+                      value={ipTypeFilter}
+                      onChange={setIpTypeFilter}
+                      className="vg-node-filter"
+                      options={IP_TYPE_FILTERS.map((value) => ({
+                        value,
+                        label:
+                          value === 'all'
+                            ? t('pages.vpngate.ipTypeFilter.all')
+                            : value === 'residential'
+                              ? t('pages.vpngate.ipTypeFilter.residential')
+                              : t('pages.vpngate.ipTypeFilter.hosting'),
+                      }))}
+                    />
+                    <Select
+                      showSearch
+                      optionFilterProp="label"
+                      value={countryFilter}
+                      onChange={setCountryFilter}
+                      className="vg-node-filter"
+                      options={[
+                        { value: 'all', label: t('pages.vpngate.countryFilter.all') },
+                        ...countries,
+                      ]}
+                    />
+                    <label className="vg-node-toggle">
+                      <Switch size="small" checked={onlyAvailable} onChange={setOnlyAvailable} />
+                      <span>{t('pages.vpngate.onlyAvailable')}</span>
+                    </label>
+                  </div>
                   <NodeTable
                     nodes={nodes}
                     columns={columns}
                     selectedRowKeys={selectedRowKeys}
                     onSelectionChange={setSelectedRowKeys}
                     filter={filter}
+                    ipTypeFilter={ipTypeFilter}
+                    countryFilter={countryFilter}
+                    onlyAvailable={onlyAvailable}
                     emptyText={
                       state.last_check_message ||
                       (state.is_connecting
@@ -936,6 +1074,9 @@ function NodeTable({
   selectedRowKeys,
   onSelectionChange,
   filter,
+  ipTypeFilter,
+  countryFilter,
+  onlyAvailable,
   emptyText,
 }: {
   nodes: VpnGateNode[];
@@ -943,31 +1084,66 @@ function NodeTable({
   selectedRowKeys: React.Key[];
   onSelectionChange: (keys: React.Key[]) => void;
   filter: string;
+  ipTypeFilter: IpTypeFilter;
+  countryFilter: string;
+  onlyAvailable: boolean;
   emptyText: string;
 }) {
+  const { t } = useTranslation();
+  const [page, setPage] = useState(1);
+
+  // A narrowed list must start at its first page, otherwise the table shows an
+  // empty page 3 while the matches sit on page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [filter, ipTypeFilter, countryFilter, onlyAvailable]);
+
   const filtered = useMemo(() => {
     const term = filter.trim().toLowerCase();
-    if (!term) return nodes;
-    return nodes.filter((node) =>
-      [node.country, node.country_short, node.ip, node.host_name, node.id]
+    return nodes.filter((node) => {
+      if (onlyAvailable && node.probe_status !== 'available' && !node.active) return false;
+      if (countryFilter !== 'all' && (node.country_short || '').toUpperCase() !== countryFilter) {
+        return false;
+      }
+      if (ipTypeFilter !== 'all') {
+        const type = nodeIpType(node);
+        if (ipTypeFilter === 'residential' && type !== 'residential' && type !== 'mobile')
+          return false;
+        if (ipTypeFilter === 'hosting' && type !== 'hosting') return false;
+      }
+      if (!term) return true;
+      return [node.country, node.country_short, node.ip, node.host_name, node.ip_type, node.id]
         .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(term)),
-    );
-  }, [nodes, filter]);
+        .some((value) => String(value).toLowerCase().includes(term));
+    });
+  }, [nodes, filter, ipTypeFilter, countryFilter, onlyAvailable]);
 
   return (
-    <Table<VpnGateNode>
-      id="vg-node-table"
-      rowKey="id"
-      size="middle"
-      columns={columns}
-      dataSource={filtered}
-      pagination={{ pageSize: 12, showSizeChanger: false, hideOnSinglePage: true }}
-      scroll={{ x: 720 }}
-      rowSelection={{ selectedRowKeys, onChange: onSelectionChange }}
-      loading={nodes.length === 0}
-      locale={{ emptyText }}
-      rowClassName={(node) => (node.active ? 'vg-row-active' : '')}
-    />
+    <>
+      <div className="vg-node-count lg-subtitle">
+        {filtered.length === nodes.length
+          ? t('pages.vpngate.filteredCountAll', { total: nodes.length })
+          : t('pages.vpngate.filteredCount', { count: filtered.length, total: nodes.length })}
+      </div>
+      <Table<VpnGateNode>
+        id="vg-node-table"
+        rowKey="id"
+        size="middle"
+        columns={columns}
+        dataSource={filtered}
+        pagination={{
+          current: page,
+          pageSize: 12,
+          showSizeChanger: false,
+          hideOnSinglePage: filtered.length <= 12,
+          onChange: setPage,
+        }}
+        scroll={{ x: 760 }}
+        rowSelection={{ selectedRowKeys, onChange: onSelectionChange }}
+        loading={nodes.length === 0}
+        locale={{ emptyText: nodes.length > 0 ? t('pages.vpngate.filterEmpty') : emptyText }}
+        rowClassName={(node) => (node.active ? 'vg-row-active' : '')}
+      />
+    </>
   );
 }

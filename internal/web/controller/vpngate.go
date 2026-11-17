@@ -486,8 +486,25 @@ func (a *VPNGateController) forwardWithin(c *gin.Context, timeout time.Duration,
 		jsonMsg(c, "the VPNGate engine returned an unreadable response", err)
 		return
 	}
-	jsonObj(c, decoded, nil)
+	// The engine explains what an action did ("routing saved; switching to …"),
+	// and the page shows that sentence instead of a generic "done" toast.
+	jsonMsgObj(c, engineMessage(decoded), decoded, nil)
 }
+
+// engineMessage pulls the engine's own human message out of a response payload.
+func engineMessage(decoded any) string {
+	payload, ok := decoded.(map[string]any)
+	if !ok {
+		return ""
+	}
+	for _, key := range []string{"message", "msg"} {
+		if text, ok := payload[key].(string); ok && strings.TrimSpace(text) != "" {
+			return text
+		}
+	}
+	return ""
+}
+
 
 func rawMessage(raw json.RawMessage) (any, error) {
 	var decoded any

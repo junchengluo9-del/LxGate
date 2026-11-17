@@ -2603,6 +2603,35 @@
         "residential": "住宅 IP",
         "hosting": "机房 IP"
       },
+      "ipTypeTags": {
+        "residential": "住宅 IP",
+        "mobile": "移动网络",
+        "hosting": "机房 IP",
+        "unknown": "未知"
+      },
+      "ipTypeFilter": {
+        "all": "全部类型",
+        "residential": "住宅与移动 IP",
+        "hosting": "机房 IP"
+      },
+      "countryFilter": {
+        "all": "全部国家/地区"
+      },
+      "onlyAvailable": "仅看可用",
+      "filterEmpty": "没有符合当前筛选条件的节点",
+      "filteredCount": "显示 {count} / {total} 个节点",
+      "filteredCountAll": "共 {total} 个节点",
+      "routingFeedback": {
+        "anyPolicy": "不限条件",
+        "saved_policy_match": "路由已保存。当前节点 {node} 仍符合「{policy}」，无需切换。",
+        "saved_switching": "路由已保存。当前节点不符合「{policy}」，正在切换到 {node}（{nodeType}）。",
+        "saved_connecting": "路由已保存，正在按「{policy}」连接 {node}（{nodeType}）。",
+        "saved_pending_switch": "路由已保存。当前节点不符合「{policy}」，节点检测结束后会自动切换。",
+        "saved_no_match_kept": "路由已保存，但节点池里暂无符合「{policy}」的可用节点；暂时保留当前节点 {node}，出现符合条件的节点后会自动切换。",
+        "saved_no_match": "路由已保存，但节点池里暂无符合「{policy}」的可用节点。",
+        "saved_fixed_ip": "路由已保存。固定节点模式由你指定的节点决定，不受国家与 IP 类型筛选影响。",
+        "saved_disabled": "路由已保存（{policy}）。当前已关闭自动连接，面板不会主动重连。"
+      },
       "refreshNodes": "更新节点",
       "refreshHint": "重新拉取 VPNGate 候选节点并测速",
       "fullCheck": "完整检测",
@@ -2623,6 +2652,7 @@
       "notBound": "未绑定",
       "columns": {
         "country": "国家",
+        "ipType": "IP 类型",
         "host": "主机",
         "latency": "延迟",
         "score": "评分",

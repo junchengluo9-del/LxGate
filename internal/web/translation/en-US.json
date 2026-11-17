@@ -2603,6 +2603,35 @@
         "residential": "Residential",
         "hosting": "Hosting"
       },
+      "ipTypeTags": {
+        "residential": "Residential",
+        "mobile": "Mobile",
+        "hosting": "Hosting",
+        "unknown": "Unknown"
+      },
+      "ipTypeFilter": {
+        "all": "All types",
+        "residential": "Residential & mobile",
+        "hosting": "Hosting"
+      },
+      "countryFilter": {
+        "all": "All countries"
+      },
+      "onlyAvailable": "Available only",
+      "filterEmpty": "No node matches these filters",
+      "filteredCount": "Showing {count} of {total} nodes",
+      "filteredCountAll": "{total} nodes",
+      "routingFeedback": {
+        "anyPolicy": "any conditions",
+        "saved_policy_match": "Routing saved. Current node {node} still matches \"{policy}\", no switch needed.",
+        "saved_switching": "Routing saved. Current node no longer matches \"{policy}\", switching to {node} ({nodeType}).",
+        "saved_connecting": "Routing saved. Connecting to {node} ({nodeType}) for \"{policy}\".",
+        "saved_pending_switch": "Routing saved. Current node no longer matches \"{policy}\"; it will switch automatically once node checks finish.",
+        "saved_no_match_kept": "Routing saved, but no available node matches \"{policy}\" yet; keeping current node {node} and switching automatically when one appears.",
+        "saved_no_match": "Routing saved, but no available node matches \"{policy}\" yet.",
+        "saved_fixed_ip": "Routing saved. Fixed node mode follows the node you pinned, so country and IP type filters do not apply.",
+        "saved_disabled": "Routing saved ({policy}). Auto-connect is off, so the panel will not reconnect."
+      },
       "refreshNodes": "Refresh nodes",
       "refreshHint": "Fetch and speed-test fresh VPNGate candidates",
       "fullCheck": "Full check",
@@ -2623,6 +2652,7 @@
       "notBound": "not bound",
       "columns": {
         "country": "Country",
+        "ipType": "IP type",
         "host": "Host",
         "latency": "Latency",
         "score": "Score",

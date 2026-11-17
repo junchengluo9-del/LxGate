@@ -262,6 +262,50 @@
   background: color-mix(in srgb, var(--lg-ok) 8%, transparent) !important;
 }
 
+/* Node list filters: one wrapping row above the table so the search box, the
+   IP type and country selects and the availability switch all stay reachable
+   on a phone. */
+.vg-node-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.vg-node-filters .vg-node-search {
+  flex: 1 1 200px;
+  min-width: 150px;
+  max-width: 320px;
+}
+
+.vg-node-filters .vg-node-filter {
+  min-width: 132px;
+}
+
+.vg-node-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--lg-text-dim);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.vg-node-count {
+  margin-bottom: 8px;
+}
+
+.vg-ip-type {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.vg-ip-type.unknown {
+  opacity: 0.7;
+}
+
 .vg-logs .lg-log {
   max-height: 300px;
 }
@@ -292,5 +336,33 @@
 
   .vg-routing-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vg-node-filters .vg-node-search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .vg-node-filters .vg-node-filter {
+    flex: 1 1 calc(50% - 5px);
+    min-width: 0;
+  }
+
+  /* Two action buttons beside the title squeeze it to "出口…" at 390px; let the
+     head wrap so the title keeps its row and the buttons sit under it. The
+     extra class raises these above Ant Design's own card styles. */
+  .vpngate-page .vg-nodes .ant-card-head-wrapper {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .vpngate-page .vg-nodes .ant-card-head-title {
+    flex: 1 1 100%;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .vpngate-page .vg-nodes .ant-card-extra {
+    margin-left: 0;
   }
 }
