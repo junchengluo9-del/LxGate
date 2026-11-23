@@ -14,35 +14,12 @@ import {
 
 import { HttpUtil } from '@/utils';
 import { pauseAnimationsUntilLeave, useTheme } from '@/hooks/useTheme';
-import type { VpngateExitsPayload } from '@/api/queries/useVpngateExits';
+import { useVpngateExitsQuery } from '@/api/queries/useVpngateExits';
 import './TopStatusBar.css';
 
 /** Xray state as /panel/api/server/status reports it. */
 interface ServerStatusSlice {
   xray?: { state?: string; version?: string };
-}
-
-/** Node entry as the embedded VPNGate engine reports it. */
-interface VpnGateNode {
-  id?: string;
-  country?: string;
-  country_short?: string;
-  latency_ms?: number;
-  ping?: number;
-  active?: boolean;
-}
-
-interface VpnGateNodesPayload {
-  nodes?: VpnGateNode[];
-  state?: {
-    active_openvpn_node_id?: string;
-    active_node_latency?: string | number;
-    is_connecting?: boolean;
-    proxy_ok?: boolean;
-    proxy_ip?: string;
-    proxy_latency_ms?: number;
-    connection_enabled?: boolean;
-  };
 }
 
 interface VersionPayload {
@@ -80,20 +57,6 @@ export default function TopStatusBar() {
     retry: false,
   });
 
-  const vpngateQuery = useQuery({
-    queryKey: ['topbar', 'vpngate'],
-    queryFn: async (): Promise<VpnGateNodesPayload> => {
-      const msg = await HttpUtil.get<VpnGateNodesPayload>('/panel/api/vpngate/nodes', undefined, {
-        silent: true,
-      });
-      return msg?.success ? (msg.obj ?? {}) : {};
-    },
-    refetchInterval: 10_000,
-    refetchIntervalInBackground: false,
-    staleTime: 5_000,
-    retry: false,
-  });
-
   const versionQuery = useQuery({
     queryKey: ['topbar', 'version'],
     queryFn: async (): Promise<VersionPayload> => {
@@ -109,27 +72,27 @@ export default function TopStatusBar() {
 
   // Multi-exit makes the legacy single-exit state the wrong source: it is
   // cleared and rebuilt while the engine re-tests nodes, so a capsule fed from
-  // it read "idle" next to two live tunnels. The exit list is the truth.
-  const exitsQuery = useQuery({
-    queryKey: ['topbar', 'vpngate-exits'],
-    queryFn: async (): Promise<VpngateExitsPayload> => {
-      const msg = await HttpUtil.get<VpngateExitsPayload>('/panel/api/vpngate/exits', undefined, {
-        silent: true,
-      });
-      if (!msg?.success) throw new Error(msg?.msg || 'exit list unavailable');
-      return { exits: msg.obj?.exits ?? [], bindings: msg.obj?.bindings ?? {} };
-    },
-    refetchInterval: 10_000,
-    refetchIntervalInBackground: false,
-    staleTime: 5_000,
-    retry: false,
-  });
+  // it read "idle" next to two live tunnels. The exit list is the truth, and
+  // this hook is the same cache entry Overview's 「Current exit」 card reads, so
+  // the two never disagree and the panel makes one poll instead of three.
+  const exitsQuery = useVpngateExitsQuery();
 
   const xrayRunning = statusQuery.data?.xray?.state === 'running';
-  const xrayState = statusQuery.data?.xray?.state ?? 'unknown';
+  // The capsule used to print the server's own "running" / "unknown" verbatim,
+  // so a Chinese panel showed English next to its translated VPNGate block.
+  const xrayState = statusQuery.data?.xray?.state || 'unknown';
+  const xrayLabel = t(`pages.vpngate.xrayStates.${xrayState}`, {
+    defaultValue: t('pages.vpngate.statusUnknown'),
+  });
 
   const exit = useMemo(() => {
     const listed = exitsQuery.data?.exits ?? [];
+    if (exitsQuery.isPending) {
+      return { label: t('loading'), tone: 'warn' as const };
+    }
+    if (exitsQuery.isError && listed.length === 0) {
+      return { label: t('pages.vpngate.statusUnknown'), tone: 'bad' as const };
+    }
     const live = listed.filter((item) => item.running);
     if (live.length > 1) {
       return { label: t('pages.vpngate.exitsOnline', { count: live.length }), tone: 'ok' as const };
@@ -140,45 +103,19 @@ export default function TopStatusBar() {
         only.node?.country || only.node?.country_short || t('pages.vpngate.unknownCountry');
       const latency = Number(only.latencyMs || only.node?.latency_ms || 0);
       const suffix = latency > 0 ? ` · ${Math.round(latency)} ms` : '';
-      return { label: `${country}${suffix}`, tone: only.proxyOk === false ? ('bad' as const) : ('ok' as const) };
-    }
-    if (listed.length > 0) {
       return {
-        label: listed.some((item) => item.connecting)
-          ? t('pages.vpngate.connecting')
-          : t('pages.vpngate.disconnected'),
-        tone: 'warn' as const,
+        label: `${country}${suffix}`,
+        tone: only.proxyOk === false ? ('bad' as const) : ('ok' as const),
       };
     }
-    const payload = vpngateQuery.data;
-    if (!payload) return { label: t('pages.vpngate.statusUnknown'), tone: 'warn' as const };
-    const state = payload.state ?? {};
-    const activeID = state.active_openvpn_node_id ?? '';
-    const nodes = payload.nodes ?? [];
-    const activeNode = nodes.find((node) => node.id === activeID);
-    if (state.is_connecting && !activeID) {
+    if (listed.some((item) => item.connecting)) {
       return { label: t('pages.vpngate.connecting'), tone: 'warn' as const };
     }
-    if (!activeID) {
-      return {
-        label:
-          state.connection_enabled === false
-            ? t('pages.vpngate.disconnected')
-            : t('pages.vpngate.idle'),
-        tone: 'warn' as const,
-      };
-    }
-    const country =
-      activeNode?.country || activeNode?.country_short || t('pages.vpngate.unknownCountry');
-    const latency = Number(
-      activeNode?.latency_ms || activeNode?.ping || state.active_node_latency || 0,
-    );
-    const suffix = latency > 0 ? ` · ${Math.round(latency)} ms` : '';
     return {
-      label: `${country}${suffix}`,
-      tone: state.proxy_ok === false ? ('bad' as const) : ('ok' as const),
+      label: listed.length > 0 ? t('pages.vpngate.disconnected') : t('pages.vpngate.idle'),
+      tone: 'warn' as const,
     };
-  }, [exitsQuery.data, vpngateQuery.data, t]);
+  }, [exitsQuery.data, exitsQuery.isPending, exitsQuery.isError, t]);
 
   const updateAvailable = !!versionQuery.data?.updateAvailable;
   const latestVersion = versionQuery.data?.latestVersion ?? '';
@@ -216,7 +153,7 @@ export default function TopStatusBar() {
             <span className="lg-dot" aria-hidden />
             <CloudServerOutlined aria-hidden />
             <span className="lg-capsule-label">Xray</span>
-            <span className="lg-capsule-value">{xrayState}</span>
+            <span className="lg-capsule-value">{xrayLabel}</span>
           </button>
         </Tooltip>
 
@@ -235,11 +172,7 @@ export default function TopStatusBar() {
 
         {updateAvailable && (
           <Tooltip title={t('pages.system.updateAvailableHint', { version: latestVersion })}>
-            <button
-              type="button"
-              className="lg-capsule accent"
-              onClick={() => navigate('/system')}
-            >
+            <button type="button" className="lg-capsule accent" onClick={() => navigate('/system')}>
               <UploadOutlined aria-hidden />
               <span className="lg-capsule-value">
                 {latestVersion ? `v${latestVersion}` : t('pages.system.updateAvailable')}
