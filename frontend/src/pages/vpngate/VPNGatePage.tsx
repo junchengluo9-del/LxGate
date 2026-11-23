@@ -556,7 +556,7 @@ export default function VPNGatePage() {
       {
         title: '',
         key: 'actions',
-        width: 170,
+        width: 150,
         align: 'right',
         render: (_value, node) => {
           const owner = exitOwners.get(node.id);
@@ -576,8 +576,11 @@ export default function VPNGatePage() {
               </Button>
             );
           }
+          // The row button carries the target exit's name rather than the verb:
+          // "Connect" is already the table's whole job, and the long label was
+          // the one thing that did not fit the column.
           return (
-            <Tooltip title={t('pages.vpngate.exits.connectHint')}>
+            <Tooltip title={t('pages.vpngate.exits.connectTo', { name: selectedExit.name })}>
               <Button
                 size="small"
                 type="primary"
@@ -585,7 +588,7 @@ export default function VPNGatePage() {
                 loading={action.isPending}
                 onClick={() => connectToExit(node.id, selectedExit.id)}
               >
-                {t('pages.vpngate.exits.connectTo', { name: selectedExit.name })}
+                {selectedExit.name}
               </Button>
             </Tooltip>
           );
