@@ -1398,6 +1398,9 @@ class ExitRuntime:
         self.proxy_error = ""
         self.connected_at = 0.0
         self.proxy_started = False
+        # Consecutive failed health probes. One slow probe must not tear down a
+        # tunnel that is actually carrying traffic; a second failure may.
+        self.health_failures = 0
 
     def running(self) -> bool:
         return self.process is not None and self.process.poll() is None
@@ -1826,6 +1829,7 @@ class ExitManager:
 
     def _apply_health(self, runtime: ExitRuntime, health: dict[str, Any]) -> None:
         runtime.proxy_ok = bool(health.get("ok"))
+        runtime.health_failures = 0 if health.get("ok") else runtime.health_failures + 1
         if health.get("ok"):
             runtime.proxy_ip = str(health.get("ip") or "")
             runtime.proxy_latency_ms = parse_int(health.get("latency_ms"))
@@ -1904,6 +1908,7 @@ class ExitManager:
                     )
             runtime.connecting = True
             runtime.last_error = ""
+            runtime.health_failures = 0
             self._sync_legacy(slot_id)
             self.set_stage(slot_id, "清理连接", f"正在关闭「{slot['name']}」的旧连接并清理网卡 {resources['dev']}...")
             self._stop_slot_process(slot_id, clear_table=True)
@@ -2236,7 +2241,13 @@ class ExitManager:
             if health.get("ok"):
                 continue
             error_text = str(health.get("error") or "未知错误")
-            message = f"[出口] 「{slot['name']}」本地代理不可用: {error_text}"
+            if runtime.health_failures < 2:
+                # Free VPNGate nodes are often just slow to answer; reconnecting
+                # on the first miss threw away working tunnels every 30 s.
+                message = f"[出口] 「{slot['name']}」首次探测失败（{error_text}），下个周期复查"
+                print(message, flush=True)
+                continue
+            message = f"[出口] 「{slot['name']}」连续 {runtime.health_failures} 次探测失败: {error_text}"
             print(message, flush=True)
             log_to_json("WARNING", "VPN", message)
             cfg = dict(slot["routing"])

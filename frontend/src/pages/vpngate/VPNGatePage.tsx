@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
@@ -232,16 +232,21 @@ export default function VPNGatePage() {
   const [draft, setDraft] = useState<TakeoverDraft | null>(null);
   const [draftDirty, setDraftDirty] = useState(false);
 
+  // A poll that fails while the engine is busy reconnecting a tunnel must not
+  // wipe the page (it used to fall back to {} and the node table emptied):
+  // throw so the last good answer stays, and keep it as the next poll starts.
   const statusQuery = useQuery({
     queryKey: ['vpngate', 'status'],
     queryFn: async (): Promise<StatusPayload> => {
       const msg = await HttpUtil.get<StatusPayload>('/panel/api/vpngate/status', undefined, {
         silent: true,
       });
-      return msg?.success ? (msg.obj ?? {}) : {};
+      if (!msg?.success) throw new Error(msg?.msg || 'status unavailable');
+      return msg.obj ?? {};
     },
     refetchInterval: STATUS_POLL_MS,
-    retry: false,
+    placeholderData: keepPreviousData,
+    retry: 1,
   });
 
   const nodesQuery = useQuery({
@@ -250,10 +255,12 @@ export default function VPNGatePage() {
       const msg = await HttpUtil.get<NodesPayload>('/panel/api/vpngate/nodes', undefined, {
         silent: true,
       });
-      return msg?.success ? (msg.obj ?? {}) : {};
+      if (!msg?.success) throw new Error(msg?.msg || 'nodes unavailable');
+      return msg.obj ?? {};
     },
     refetchInterval: NODES_POLL_MS,
-    retry: false,
+    placeholderData: keepPreviousData,
+    retry: 1,
   });
 
   const logsQuery = useQuery({
