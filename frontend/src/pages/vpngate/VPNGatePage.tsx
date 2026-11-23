@@ -258,7 +258,14 @@ export default function VPNGatePage() {
   );
 
   const state = nodesQuery.data?.state ?? {};
-  const nodes = nodesQuery.data?.nodes ?? [];
+  // The engine answers with an empty node table while its periodic check rebuilds
+  // the list, which used to blink the table and the country selects to "0 nodes"
+  // every few minutes. The last non-empty answer stays on screen until a real one
+  // arrives; nothing is polled extra for it.
+  const liveNodes = nodesQuery.data?.nodes ?? [];
+  const lastNodesRef = useRef<typeof liveNodes>([]);
+  if (liveNodes.length > 0) lastNodesRef.current = liveNodes;
+  const nodes = liveNodes.length > 0 ? liveNodes : lastNodesRef.current;
   const supervisor = statusQuery.data?.supervisor;
   const inbounds: VpngateInboundOption[] = exitsQuery.data?.inbounds ?? takeover?.inbounds ?? [];
 
@@ -615,16 +622,14 @@ export default function VPNGatePage() {
   const selectedNode = selectedExit?.node;
   const selectedCountry = selectedNode?.country || selectedNode?.country_short || '';
   const selectedIp = selectedExit?.proxyIp || selectedNode?.ip || '';
-  const selectedLatency =
-    selectedExit?.latencyMs || selectedNode?.latency_ms || 0;
+  const selectedLatency = selectedExit?.latencyMs || selectedNode?.latency_ms || 0;
   const boundHere = selectedExit
     ? inbounds.filter((inbound) => bindings[inbound.tag] === selectedExit.slot).length
     : 0;
   // A global takeover rule can still be carrying inbounds to the exit that owns
   // vpngate-out. Those are not per-inbound bindings, so the panel shows them
   // indeterminate rather than pretending they are (or are not) checked.
-  const implicitHere =
-    !!selectedExit && !!takeoverExit && takeoverExit.slot === selectedExit.slot;
+  const implicitHere = !!selectedExit && !!takeoverExit && takeoverExit.slot === selectedExit.slot;
   const outboundRegistered = !!selectedExit && registeredSlots.includes(selectedExit.slot);
   const exitTone = !selectedExit
     ? 'bad'
@@ -799,9 +804,7 @@ export default function VPNGatePage() {
                     <div className="vg-inbound-list">
                       {inbounds.map((inbound) => {
                         const here = !!selectedExit && bindings[inbound.tag] === selectedExit.slot;
-                        const other = here
-                          ? undefined
-                          : exitBySlot.get(bindings[inbound.tag] ?? 0);
+                        const other = here ? undefined : exitBySlot.get(bindings[inbound.tag] ?? 0);
                         const carried = !here && !other && implicitHere;
                         return (
                           <label
@@ -812,9 +815,7 @@ export default function VPNGatePage() {
                               checked={here}
                               indeterminate={carried}
                               disabled={!selectedExit || bindingTag === inbound.tag || bulkBinding}
-                              onChange={(event) =>
-                                toggleBinding(inbound.tag, event.target.checked)
-                              }
+                              onChange={(event) => toggleBinding(inbound.tag, event.target.checked)}
                             />
                             <span className="vg-inbound-main">
                               <span className="vg-inbound-remark">
@@ -843,9 +844,7 @@ export default function VPNGatePage() {
                                   </Tag>
                                 )}
                                 {!here && !other && !takeoverExit && (
-                                  <Tag bordered={false}>
-                                    {t('pages.vpngate.takeover.direct')}
-                                  </Tag>
+                                  <Tag bordered={false}>{t('pages.vpngate.takeover.direct')}</Tag>
                                 )}
                                 {inbound.enable === false && (
                                   <Tag bordered={false}>{t('disabled')}</Tag>
@@ -908,7 +907,11 @@ export default function VPNGatePage() {
                     <div className="vg-tile-value">
                       <span
                         className={`lg-pill ${
-                          selectedExit && selectedExit.proxyOk === false ? 'bad' : selectedIp ? 'ok' : 'warn'
+                          selectedExit && selectedExit.proxyOk === false
+                            ? 'bad'
+                            : selectedIp
+                              ? 'ok'
+                              : 'warn'
                         }`}
                       >
                         <span className="lg-dot" aria-hidden />
@@ -922,9 +925,7 @@ export default function VPNGatePage() {
                   </div>
 
                   <div className="lg-card vg-tile">
-                    <span className="vg-tile-label">
-                      {t('pages.vpngate.tiles.boundInbounds')}
-                    </span>
+                    <span className="vg-tile-label">{t('pages.vpngate.tiles.boundInbounds')}</span>
                     <div className="vg-tile-value">
                       <span className={`lg-pill ${boundHere > 0 ? 'ok' : 'warn'}`}>
                         <span className="lg-dot" aria-hidden />

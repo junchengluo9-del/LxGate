@@ -1041,17 +1041,19 @@ def kill_existing_openvpn_processes() -> None:
         print(f"[Cleanup Error] Failed to kill existing OpenVPN processes: {e}", flush=True)
 
 def update_handshake_status(line_lower: str, slot_id: str | None = None) -> None:
+    # Stage codes, not prose: the panel owns the wording (pages.vpngate.stages.*),
+    # so an English panel never shows a Chinese handshake line.
     status_map = {
-        "resolving": ("解析域名", "正在解析服务器域名与 IP 地址..."),
-        "udp link local": ("物理连接", "已创建本地套接字，开始尝试发送数据包..."),
-        "tcp link local": ("物理连接", "已创建本地套接字，开始尝试发送数据包..."),
-        "tls: initial packet": ("证书握手", "已成功发送首包，正在与远程服务器建立 TLS 安全通道..."),
-        "verify ok": ("证书校验", "服务器证书校验成功，正在进行身份验证..."),
-        "peer connection initiated": ("协商加密", "控制通道已建立，已初始化与服务器的加密对等连接..."),
-        "push_request": ("请求配置", "正在向服务器发送 PUSH_REQUEST 请求配置参数与 IP 分配..."),
-        "push_reply": ("应用配置", "已接收服务器 PUSH_REPLY，获取到 IP 分配，正在准备配置网卡..."),
-        "tun/tap device": ("创建网卡", "正在创建虚拟通道并打开 TUN 虚拟网卡设备..."),
-        "do_ifconfig": ("网卡配置", "正在为虚拟网卡配置 IP 地址及相关网络属性..."),
+        "resolving": ("resolve", "正在解析服务器域名与 IP 地址..."),
+        "udp link local": ("link", "已创建本地套接字，开始尝试发送数据包..."),
+        "tcp link local": ("link", "已创建本地套接字，开始尝试发送数据包..."),
+        "tls: initial packet": ("tls", "已成功发送首包，正在与远程服务器建立 TLS 安全通道..."),
+        "verify ok": ("verify", "服务器证书校验成功，正在进行身份验证..."),
+        "peer connection initiated": ("negotiate", "控制通道已建立，已初始化与服务器的加密对等连接..."),
+        "push_request": ("push", "正在向服务器发送 PUSH_REQUEST 请求配置参数与 IP 分配..."),
+        "push_reply": ("apply", "已接收服务器 PUSH_REPLY，获取到 IP 分配，正在准备配置网卡..."),
+        "tun/tap device": ("device", "正在创建虚拟通道并打开 TUN 虚拟网卡设备..."),
+        "do_ifconfig": ("ifconfig", "正在为虚拟网卡配置 IP 地址及相关网络属性..."),
     }
     for key, (short_status, detailed_desc) in status_map.items():
         if key in line_lower:
@@ -1386,7 +1388,9 @@ class ExitRuntime:
         self.slot = slot
         self.process: subprocess.Popen[str] | None = None
         self.node_id = ""
-        self.stage = "无活动连接"
+        # A stable code, not prose: the panel translates it (the engine has no
+        # i18n and its UI strings used to leak Chinese into the English panel).
+        self.stage = "idle"
         self.stage_detail = ""
         self.connecting = False
         self.last_error = ""
@@ -1910,10 +1914,10 @@ class ExitManager:
             runtime.last_error = ""
             runtime.health_failures = 0
             self._sync_legacy(slot_id)
-            self.set_stage(slot_id, "清理连接", f"正在关闭「{slot['name']}」的旧连接并清理网卡 {resources['dev']}...")
+            self.set_stage(slot_id, "cleanup", f"正在关闭「{slot['name']}」的旧连接并清理网卡 {resources['dev']}...")
             self._stop_slot_process(slot_id, clear_table=True)
 
-            self.set_stage(slot_id, "写入配置", "正在写入 OpenVPN 节点配置文件...")
+            self.set_stage(slot_id, "write", "正在写入 OpenVPN 节点配置文件...")
             config_path = Path(node.get("config_file") or (CONFIG_DIR / f"{safe_name(node_id)}.ovpn"))
             try:
                 CONFIG_DIR.mkdir(exist_ok=True, parents=True)
@@ -1921,7 +1925,7 @@ class ExitManager:
             except Exception as exc:
                 raise RuntimeError(f"写入出口配置失败: {exc}")
 
-            self.set_stage(slot_id, "启动核心", f"正在通过网卡 {resources['dev']} 建立 OpenVPN 隧道...")
+            self.set_stage(slot_id, "start", f"正在通过网卡 {resources['dev']} 建立 OpenVPN 隧道...")
             ok, message, process = run_openvpn_until_ready(
                 str(config_path),
                 keep_alive=True,
@@ -1932,7 +1936,7 @@ class ExitManager:
             if not ok or process is None:
                 self._mark_node_unavailable(node_id, message)
                 runtime.last_error = message
-                runtime.stage = "无活动连接"
+                runtime.stage = "idle"
                 self._sync_legacy(slot_id)
                 log_to_json("ERROR", "VPN", f"[{slot['name']}] 连接节点 {node_id} 失败: {message}")
                 raise RuntimeError(message)
@@ -1942,7 +1946,7 @@ class ExitManager:
             runtime.connected_at = time.time()
             self._sync_legacy(slot_id)
 
-            self.set_stage(slot_id, "配置路由", f"正在配置策略路由（table {resources['table']} / {resources['dev']}）...")
+            self.set_stage(slot_id, "route", f"正在配置策略路由（table {resources['table']} / {resources['dev']}）...")
             setup_policy_routing(resources["dev"], resources["table"])
 
             latency = 0
@@ -1954,7 +1958,7 @@ class ExitManager:
             runtime.latency_ms = max(0, latency)
             runtime.last_ping = time.time()
 
-            self.set_stage(slot_id, "测试延迟", f"正在测试出口 {resources['proxyPort']} 的连通性与出口 IP...")
+            self.set_stage(slot_id, "probe", f"正在测试出口 {resources['proxyPort']} 的连通性与出口 IP...")
             health = check_proxy_health(port=resources["proxyPort"], dev=resources["dev"])
             self._apply_health(runtime, health)
 
@@ -1967,8 +1971,7 @@ class ExitManager:
                 self._write()
             self._refresh_node_flags()
 
-            latency_text = f"{runtime.latency_ms} ms" if runtime.latency_ms > 0 else "检测超时"
-            self.set_stage(slot_id, latency_text, f"{slot['name']} 已连接 {node_id}")
+            self.set_stage(slot_id, "connected", f"{slot['name']} 已连接 {node_id}")
             self._sync_legacy(slot_id)
             log_to_json(
                 "INFO",
@@ -1998,7 +2001,7 @@ class ExitManager:
         runtime.node_id = ""
         runtime.connected_at = 0.0
         runtime.latency_ms = 0
-        runtime.stage = "无活动连接"
+        runtime.stage = "idle"
         runtime.stage_detail = "已手动断开"
         runtime.proxy_ok = None
         runtime.proxy_ip = ""

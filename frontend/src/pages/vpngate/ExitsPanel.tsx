@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import dayjs from 'dayjs';
 import { Alert, Button, Empty, Input, Modal, Space, Tag, Tooltip } from 'antd';
 import {
   ApiOutlined,
@@ -42,6 +43,16 @@ function nodeLabel(exit: VpngateExit, fallback: string) {
 }
 
 /**
+ * The engine names a fresh slot 「出口 N」, which repeats the slot badge right
+ * next to it. A slot the operator renamed keeps its badge — that badge is then
+ * the only place the slot number appears.
+ */
+function keepsSlotBadge(exit: VpngateExit) {
+  const match = /^(?:出口|exit)\s*(\d+)$/i.exec(exit.name.trim());
+  return !match || Number(match[1]) !== exit.slot;
+}
+
+/**
  * One card per residential exit.
  *
  * The cards are a master control: clicking one selects it, and everything below
@@ -78,6 +89,7 @@ export default function ExitsPanel({
   const memory = data?.memory;
   const bindings = data?.bindings ?? {};
   const busy = createExit.isPending || deleteExit.isPending;
+  const selected = exits.find((exit) => exit.id === selectedId) ?? exits[0];
 
   const boundCount = useMemo(() => {
     const counts = new Map<number, number>();
@@ -180,6 +192,16 @@ export default function ExitsPanel({
       )}
       {data?.engineError && <Alert type="warning" showIcon message={data.engineError} />}
 
+      {/* The selection used to be announced inside the selected card, which pushed
+          that card's text and buttons a line below its neighbours'. It belongs to
+          the whole grid, because it is true of every panel underneath it. */}
+      {selected && exits.length > 0 && (
+        <p className="vg-exit-selected lg-subtitle">
+          <CheckCircleFilled aria-hidden />
+          {t('pages.vpngate.exits.selectedHint', { name: selected.name })}
+        </p>
+      )}
+
       {exits.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -195,12 +217,22 @@ export default function ExitsPanel({
             const status = exitStatus(exit);
             const node = exit.node;
             const ipType = (node?.ip_type || '').toLowerCase();
-            const selected = exit.id === selectedId;
+            const isSelected = exit.id === selectedId;
             const bound = boundCount.get(exit.slot) ?? 0;
+            const stageLine =
+              status === 'on'
+                ? t('pages.vpngate.exits.connectedSince', {
+                    time: exit.connectedAt ? dayjs.unix(exit.connectedAt).format('HH:mm') : '—',
+                  })
+                : status === 'busy'
+                  ? t(`pages.vpngate.stages.${exit.stage || 'idle'}`, {
+                      defaultValue: t('pages.vpngate.connecting'),
+                    })
+                  : (exit.lastError ?? '');
             return (
               <article
                 key={exit.id}
-                className={`vg-exit-card ${status}${selected ? ' is-selected' : ''}`}
+                className={`vg-exit-card ${status}${isSelected ? ' is-selected' : ''}`}
                 onClick={() => onSelect(exit.id)}
               >
                 <header className="vg-exit-head">
@@ -210,23 +242,25 @@ export default function ExitsPanel({
                     <button
                       type="button"
                       className="vg-exit-pick"
-                      aria-pressed={selected}
+                      aria-pressed={isSelected}
                       aria-label={t('pages.vpngate.exits.select', { name: exit.name })}
                       onClick={(event) => {
                         event.stopPropagation();
                         onSelect(exit.id);
                       }}
                     >
-                      {selected ? (
+                      {isSelected ? (
                         <CheckCircleFilled className="vg-exit-pick-icon" aria-hidden />
                       ) : (
                         <span className="vg-exit-pick-dot" aria-hidden />
                       )}
                       <span className="vg-exit-name">{exit.name}</span>
                     </button>
-                    <Tag bordered={false} className="vg-exit-slot">
-                      {t('pages.vpngate.exits.slot', { slot: exit.slot })}
-                    </Tag>
+                    {keepsSlotBadge(exit) && (
+                      <Tag bordered={false} className="vg-exit-slot">
+                        {t('pages.vpngate.exits.slot', { slot: exit.slot })}
+                      </Tag>
+                    )}
                   </div>
                   <span
                     className={`lg-pill ${status === 'on' ? 'ok' : status === 'busy' ? 'warn' : 'bad'}`}
@@ -239,12 +273,6 @@ export default function ExitsPanel({
                         : t('pages.vpngate.disconnected')}
                   </span>
                 </header>
-
-                {selected && (
-                  <p className="vg-exit-current lg-subtitle">
-                    {t('pages.vpngate.exits.selectedHint', { name: exit.name })}
-                  </p>
-                )}
 
                 <div className="vg-exit-node">
                   <span className="lg-mono">
@@ -264,12 +292,16 @@ export default function ExitsPanel({
                   </Space>
                 </div>
 
-                <p className="vg-exit-stage lg-subtitle">
-                  {exit.stageDetail || exit.stage || t('pages.vpngate.exits.idle')}
+                {/* One status line, one sentence: connected says since when, a
+                    connecting exit says which step it is on (the engine emits a
+                    code, the panel owns the wording), an offline exit stays
+                    quiet unless the last attempt failed. The line is always
+                    rendered so every card's rows stay level. */}
+                <p
+                  className={`vg-exit-stage lg-subtitle${status === 'off' && exit.lastError ? ' is-error' : ''}`}
+                >
+                  {stageLine}
                 </p>
-                {exit.lastError && status === 'off' && (
-                  <p className="vg-exit-error lg-subtitle">{exit.lastError}</p>
-                )}
 
                 <div className="vg-exit-tech lg-mono">
                   <span>{exit.dev}</span>
@@ -284,10 +316,7 @@ export default function ExitsPanel({
                   </span>
                 </div>
 
-                <footer
-                  className="vg-exit-actions"
-                  onClick={(event) => event.stopPropagation()}
-                >
+                <footer className="vg-exit-actions" onClick={(event) => event.stopPropagation()}>
                   <Space size={6} wrap>
                     <Tooltip title={t('pages.vpngate.exits.connectHint')}>
                       <Button

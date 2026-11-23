@@ -123,9 +123,7 @@
     "apiDocs": "API 文档",
     "hosts": "主机",
     "openMenu": "打开菜单",
-    "pinSidebar": "固定侧边栏",
-    "unpinSidebar": "取消固定侧边栏",
-    "subFormats": "Sub Formats",
+    "subFormats": "订阅格式",
     "vpngate": "VPNGate 出口",
     "system": "系统与更新",
     "collapseSidebar": "收起侧栏",
@@ -322,10 +320,9 @@
       "xraySwitchAnyway": "仍然切换",
       "currentExit": {
         "title": "当前出口",
-        "mode": "接管模式",
-        "connect": "连接",
         "open": "打开 VPNGate",
-        "country": "切换国家"
+        "noExit": "当前没有出口在线",
+        "inbounds": "{count} 个入站"
       }
     },
     "inbounds": {
@@ -2649,11 +2646,6 @@
       },
       "takeover": {
         "inboundsEmpty": "还没有入站。先添加一个入站，再勾选需要走 VPNGate 的入站。",
-        "modes": {
-          "all": "全部入站走 VPNGate",
-          "selected": "指定入站走 VPNGate",
-          "manual": "仅手动分流"
-        },
         "advanced": {
           "title": "高级技术设置",
           "proxy": "本地出口代理",
@@ -2695,7 +2687,6 @@
         "empty": "还没有出口",
         "unavailable": "引擎未运行，暂时读不到出口列表",
         "noNode": "尚未连接节点",
-        "idle": "空闲",
         "connectHint": "按该出口自己的策略自动挑选最佳节点，并跳过其它出口正在使用的节点。",
         "switchNode": "换节点",
         "policy": "策略",
@@ -2714,16 +2705,40 @@
         "connectTo": "连接到 {name}",
         "connectTarget": "本表「连接」按钮会把节点接到「{name}」；要换目标请点上方出口卡片。",
         "disconnectHint": "断开「{name}」",
-        "savePolicy": "保存策略"
+        "savePolicy": "保存策略",
+        "connectedSince": "自 {time} 起已连接"
       },
       "toUltra": "切换到极暗模式",
-      "exitsOnline": "{count} 个出口在线"
+      "exitsOnline": "{count} 个出口在线",
+      "xrayStates": {
+        "running": "运行中",
+        "stop": "已停止",
+        "error": "异常",
+        "unknown": "未知"
+      },
+      "stages": {
+        "idle": "空闲",
+        "cleanup": "清理旧连接",
+        "write": "写入节点配置",
+        "start": "启动 OpenVPN",
+        "route": "配置策略路由",
+        "probe": "检测出口连通性",
+        "connected": "已连接",
+        "resolve": "解析节点域名",
+        "link": "连接节点",
+        "tls": "TLS 握手",
+        "verify": "校验证书",
+        "negotiate": "协商加密通道",
+        "push": "请求配置",
+        "apply": "应用配置",
+        "device": "创建网卡",
+        "ifconfig": "配置网卡"
+      }
     },
     "system": {
       "updateAvailable": "有可用更新",
       "updateAvailableHint": "LxGate v{version} 已发布",
       "upToDate": "已是最新",
-      "channel": "通道：{channel}",
       "latest": "最新 v{version}",
       "checkAgain": "重新检查",
       "updateNow": "立即更新",
@@ -2769,7 +2784,11 @@
       "tokenSave": "保存 Token",
       "tokenClear": "清除",
       "tokenCleared": "GitHub Token 已清除",
-      "tokenRequiredHint": "私有仓库必须先填写 Token，才能检查更新。"
+      "tokenRequiredHint": "私有仓库必须先填写 Token，才能检查更新。",
+      "notChecked": "未检查"
+    },
+    "apiDocs": {
+      "websocketEvents": "WebSocket 事件"
     }
   },
   "tgbot": {

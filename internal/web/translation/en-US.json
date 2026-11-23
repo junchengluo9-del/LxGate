@@ -123,8 +123,6 @@
     "outbounds": "Outbounds",
     "apiDocs": "API Docs",
     "openMenu": "Open menu",
-    "pinSidebar": "Pin sidebar",
-    "unpinSidebar": "Unpin sidebar",
     "subFormats": "Sub Formats",
     "vpngate": "VPNGate Exit",
     "system": "System & Update",
@@ -322,10 +320,9 @@
       "xraySwitchAnyway": "Switch anyway",
       "currentExit": {
         "title": "Current exit",
-        "mode": "Takeover",
-        "connect": "Connect",
         "open": "Open VPNGate",
-        "country": "Switch country"
+        "noExit": "No exit is online right now",
+        "inbounds": "{count} inbounds"
       }
     },
     "inbounds": {
@@ -2649,11 +2646,6 @@
       },
       "takeover": {
         "inboundsEmpty": "No inbounds yet. Add an inbound first, then pick the ones that should exit through VPNGate.",
-        "modes": {
-          "all": "All inbounds",
-          "selected": "Selected inbounds",
-          "manual": "Manual routing only"
-        },
         "advanced": {
           "title": "Advanced technical settings",
           "proxy": "Local exit proxy",
@@ -2695,7 +2687,6 @@
         "empty": "No exits yet",
         "unavailable": "The exit list is unavailable while the engine is down",
         "noNode": "No node connected",
-        "idle": "Idle",
         "connectHint": "Connect this exit to the best node its own policy accepts, skipping nodes other exits use.",
         "switchNode": "Change node",
         "policy": "Policy",
@@ -2714,16 +2705,40 @@
         "connectTo": "Connect to {name}",
         "connectTarget": "This table connects nodes to “{name}”. Pick another exit card above to change the target.",
         "disconnectHint": "Disconnect “{name}”",
-        "savePolicy": "Save policy"
+        "savePolicy": "Save policy",
+        "connectedSince": "connected since {time}"
       },
       "toUltra": "Switch to ultra-dark mode",
-      "exitsOnline": "{count} exits online"
+      "exitsOnline": "{count} exits online",
+      "xrayStates": {
+        "running": "running",
+        "stop": "stopped",
+        "error": "error",
+        "unknown": "unknown"
+      },
+      "stages": {
+        "idle": "Idle",
+        "cleanup": "Closing the old tunnel",
+        "write": "Writing the node config",
+        "start": "Starting OpenVPN",
+        "route": "Configuring policy routing",
+        "probe": "Checking the exit",
+        "connected": "Connected",
+        "resolve": "Resolving the node host",
+        "link": "Reaching the node",
+        "tls": "TLS handshake",
+        "verify": "Verifying the certificate",
+        "negotiate": "Negotiating the tunnel",
+        "push": "Requesting the config",
+        "apply": "Applying the config",
+        "device": "Creating the tunnel device",
+        "ifconfig": "Configuring the tunnel device"
+      }
     },
     "system": {
       "updateAvailable": "Update available",
       "updateAvailableHint": "LxGate v{version} is available",
       "upToDate": "Up to date",
-      "channel": "channel: {channel}",
       "latest": "latest v{version}",
       "checkAgain": "Check again",
       "updateNow": "Update now",
@@ -2769,7 +2784,11 @@
       "tokenSave": "Save token",
       "tokenClear": "Clear",
       "tokenCleared": "GitHub token cleared",
-      "tokenRequiredHint": "A private repository needs a token before the release check can work."
+      "tokenRequiredHint": "A private repository needs a token before the release check can work.",
+      "notChecked": "Not checked"
+    },
+    "apiDocs": {
+      "websocketEvents": "WebSocket events"
     }
   },
   "tgbot": {
