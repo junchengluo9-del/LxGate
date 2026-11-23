@@ -1701,7 +1701,7 @@ class ExitManager:
             self._runtimes[slot_id] = ExitRuntime(slot_no)
             self._write()
         self.ensure_proxy(slot_id)
-        log_to_json("INFO", "VPN", f"已创建出口 {slot['name']}（{slot_id}，网卡 {exit_resources(slot_no)['dev']}）")
+        log_to_json("INFO", "VPN", f"已创建出口 [{slot['name']}]（{slot_id}，网卡 {exit_resources(slot_no)['dev']}）")
         return self.status_for(slot_id)
 
     def update(
@@ -1770,7 +1770,7 @@ class ExitManager:
             self._slots.pop(slot_id, None)
             self._runtimes.pop(slot_id, None)
             self._write()
-        log_to_json("INFO", "VPN", f"已删除出口 {slot['name']}（{slot_id}）")
+        log_to_json("INFO", "VPN", f"已删除出口 [{slot['name']}]（{slot_id}）")
         return {"deleted": slot_id, "name": slot["name"]}
 
     # ---------------- connect / disconnect ----------------
@@ -1929,7 +1929,7 @@ class ExitManager:
                 runtime.last_error = message
                 runtime.stage = "无活动连接"
                 self._sync_legacy(slot_id)
-                log_to_json("ERROR", "VPN", f"出口 {slot['name']} 连接节点 {node_id} 失败: {message}")
+                log_to_json("ERROR", "VPN", f"[{slot['name']}] 连接节点 {node_id} 失败: {message}")
                 raise RuntimeError(message)
             started = True
             runtime.process = process
@@ -1963,12 +1963,12 @@ class ExitManager:
             self._refresh_node_flags()
 
             latency_text = f"{runtime.latency_ms} ms" if runtime.latency_ms > 0 else "检测超时"
-            self.set_stage(slot_id, latency_text, f"出口 {slot['name']} 已连接 {node_id}")
+            self.set_stage(slot_id, latency_text, f"{slot['name']} 已连接 {node_id}")
             self._sync_legacy(slot_id)
             log_to_json(
                 "INFO",
                 "VPN",
-                f"出口 {slot['name']} 节点 {node_id} 连接成功，网卡 {resources['dev']} / 路由表 {resources['table']}",
+                f"[{slot['name']}] 节点 {node_id} 连接成功，网卡 {resources['dev']} / 路由表 {resources['table']}",
             )
             return f"Connected {node_id}"
         except Exception as exc:
@@ -2004,7 +2004,7 @@ class ExitManager:
         self._refresh_node_flags()
         if slot_id == EXIT_DEFAULT_ID:
             set_state(last_check_message="手动断开连接", active_node_latency="无活动连接")
-        log_to_json("INFO", "VPN", f"出口 {slot['name']} 已断开")
+        log_to_json("INFO", "VPN", f"出口 [{slot['name']}] 已断开")
         return {"ok": True, "exit": slot_id}
 
     # ---------------- policy ----------------
