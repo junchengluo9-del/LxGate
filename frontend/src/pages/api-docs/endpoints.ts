@@ -3036,6 +3036,149 @@ export const sections: readonly Section[] = [
         ],
         body: '{\n  "mode": "selected",\n  "inboundTags": ["in-443-tcp", "in-8388"]\n}',
       },
+      {
+        method: 'GET',
+        path: '/panel/api/vpngate/exits',
+        summary:
+          'Every exit slot (name, device, policy table, loopback proxy port, running node, routing policy, health), the host memory budget (total / available / reserve / per tunnel / how many more tunnels fit), the per-inbound binding read from the Xray template, and the inbound options a binding can name.',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/exits',
+        summary:
+          'Create an exit slot. The engine assigns a free device (lxgtunN), policy table (100+N) and loopback proxy port, registers its vpngate-out-N outbound and does not connect it until asked.',
+        params: [
+          {
+            name: 'name',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'Display name for the new exit.',
+          },
+        ],
+        body: '{\n  "name": "日本住宅 2"\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/exits/update',
+        summary:
+          'Rename an exit and/or change its routing policy (mode, country, IP type, favourites fallback). The new policy is evaluated immediately against the node that exit runs on.',
+        params: [
+          {
+            name: 'id',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'Exit id, e.g. exit-2.',
+          },
+          {
+            name: 'name',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'New display name.',
+            optional: true,
+          },
+          {
+            name: 'routing_mode',
+            in: 'body (json)',
+            type: 'string',
+            enum: ['auto', 'fixed_region', 'fixed_ip', 'favorites'],
+            desc: 'Routing strategy for this exit only.',
+            optional: true,
+          },
+        ],
+        body: '{\n  "id": "exit-2",\n  "name": "日本住宅",\n  "routing_mode": "fixed_region",\n  "force_country": "JP",\n  "routing_ip_type": "residential"\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/exits/delete',
+        summary:
+          'Delete an exit: its tunnel is stopped, its outbound and routing rule are removed from the Xray template, and the inbounds that used it fall back to direct. The default exit (exit-1) cannot be deleted.',
+        params: [
+          {
+            name: 'id',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'Exit id to delete.',
+          },
+        ],
+        body: '{\n  "id": "exit-2"\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/exits/connect',
+        summary:
+          'Connect one exit to one node (switching is the same call). A node can only serve one exit at a time, and a new tunnel is refused with an explanation when the host lacks memory for it.',
+        params: [
+          {
+            name: 'exitId',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'Target exit id.',
+          },
+          {
+            name: 'nodeId',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'Node id from /nodes.',
+          },
+        ],
+        body: '{\n  "exitId": "exit-2",\n  "nodeId": "JP_1.2.3.4_1194_udp"\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/exits/auto-connect',
+        summary: 'Let one exit pick a node its saved policy accepts, skipping nodes other exits use.',
+        params: [
+          {
+            name: 'exitId',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'Target exit id.',
+          },
+        ],
+        body: '{\n  "exitId": "exit-2"\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/exits/disconnect',
+        summary: "Stop one exit's tunnel and disable its auto-connect. Other exits keep running.",
+        params: [
+          {
+            name: 'exitId',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'Target exit id.',
+          },
+        ],
+        body: '{\n  "exitId": "exit-2"\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/exits/bind',
+        summary:
+          'Send one inbound through one exit, or back to direct. The panel keeps one managed rule per exit (ruleTag vpngate-exit-N) ahead of any all-inbounds takeover rule and before the catch-all, then hot-applies it to Xray.',
+        params: [
+          {
+            name: 'inboundTag',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'Xray inbound tag.',
+          },
+          {
+            name: 'exitId',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'Exit id, or empty for direct.',
+            optional: true,
+          },
+        ],
+        body: '{\n  "inboundTag": "in-15000",\n  "exitId": "exit-2"\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/exits/sync',
+        summary:
+          'Register a socks outbound in the Xray template for every exit the engine reports (vpngate-out, vpngate-out-2, …) and reload Xray.',
+      },
     ],
   },
 

@@ -34,7 +34,6 @@ import {
   SearchOutlined,
   SettingOutlined,
   SwapOutlined,
-  ThunderboltOutlined,
 } from '@ant-design/icons';
 
 import { HttpUtil } from '@/utils';
@@ -47,6 +46,8 @@ import {
   type VpngateInboundOption,
   type VpngateTakeoverMode,
 } from '@/api/queries/useVpngateTakeover';
+import { useVpngateExitsQuery } from '@/api/queries/useVpngateExits';
+import ExitsPanel, { ExitConnectMenu } from '@/pages/vpngate/ExitsPanel';
 import AppSidebar from '@/layouts/AppSidebar';
 import TopStatusBar from '@/layouts/TopStatusBar';
 import { setMessageInstance } from '@/utils/messageBus';
@@ -270,6 +271,19 @@ export default function VPNGatePage() {
   const takeoverQuery = useVpngateTakeoverQuery();
   const takeoverMutation = useSetVpngateTakeover();
   const takeover = takeoverQuery.data;
+  // Multi-exit: one shared node pool, one exit card per slot. The panel reads
+  // the same /exits payload the inbound form uses, so the exit names match.
+  const exitsQuery = useVpngateExitsQuery();
+  const exits = exitsQuery.data?.exits ?? [];
+  const notify = useCallback(
+    (kind: 'success' | 'info' | 'warning' | 'error', text: string) => {
+      if (kind === 'success') messageApi.success(text);
+      else if (kind === 'info') messageApi.info(text);
+      else if (kind === 'warning') messageApi.warning(text, 7);
+      else messageApi.error(text);
+    },
+    [messageApi],
+  );
 
   const state = nodesQuery.data?.state ?? {};
   const nodes = nodesQuery.data?.nodes ?? [];
@@ -387,8 +401,15 @@ export default function VPNGatePage() {
     },
   });
 
-  const connectTo = useCallback(
-    (nodeId: string) => action.mutate({ url: '/panel/api/vpngate/connect', body: { id: nodeId } }),
+  // A node is connected *to an exit*: with one exit the button names it, with
+  // several the operator picks which exit should leave from this node.
+  const connectToExit = useCallback(
+    (nodeId: string, exitId: string) => {
+      action.mutate({
+        url: '/panel/api/vpngate/exits/connect',
+        body: { exitId, nodeId },
+      });
+    },
     [action],
   );
 
@@ -445,6 +466,15 @@ export default function VPNGatePage() {
       .sort((a, b) => a.value.localeCompare(b.value));
   }, [nodes]);
 
+  const exitOwners = useMemo(() => {
+    const owners = new Map<string, { exitId: string; name: string }>();
+    for (const exit of exits) {
+      if (exit.running && exit.nodeId)
+        owners.set(exit.nodeId, { exitId: exit.id, name: exit.name });
+    }
+    return owners;
+  }, [exits]);
+
   const columns = useMemo<ColumnsType<VpnGateNode>>(
     () => [
       {
@@ -484,7 +514,7 @@ export default function VPNGatePage() {
             <span className="lg-mono">{node.ip || node.host_name || '—'}</span>
             {node.active && (
               <Tag color="green" bordered={false}>
-                {t('pages.vpngate.columns.active')}
+                {exitOwners.get(node.id)?.name || t('pages.vpngate.columns.active')}
               </Tag>
             )}
           </div>
@@ -522,22 +552,31 @@ export default function VPNGatePage() {
       {
         title: '',
         key: 'actions',
-        width: 120,
+        width: 150,
         align: 'right',
-        render: (_value, node) => (
-          <Button
-            size="small"
-            type={node.active ? 'default' : 'primary'}
-            icon={node.active ? <CheckCircleOutlined /> : <ThunderboltOutlined />}
-            loading={action.isPending}
-            onClick={() => connectTo(node.id)}
-          >
-            {node.active ? t('pages.vpngate.connected') : t('pages.vpngate.connect')}
-          </Button>
-        ),
+        render: (_value, node) => {
+          const owner = exitOwners.get(node.id);
+          if (owner) {
+            return (
+              <Tooltip title={t('pages.vpngate.exits.occupiedBy', { name: owner.name })}>
+                <Tag color="geekblue" bordered={false} className="vg-node-owner">
+                  <CheckCircleOutlined aria-hidden /> {owner.name}
+                </Tag>
+              </Tooltip>
+            );
+          }
+          return (
+            <ExitConnectMenu
+              exits={exits}
+              nodeId={node.id}
+              loading={action.isPending}
+              onPick={(exitId) => connectToExit(node.id, exitId)}
+            />
+          );
+        },
       },
     ],
-    [t, action.isPending, connectTo],
+    [t, action.isPending, connectToExit, exits, exitOwners],
   );
 
   const logsText = useMemo(() => {
@@ -681,6 +720,14 @@ export default function VPNGatePage() {
                     description={statusQuery.data.engineError}
                   />
                 )}
+
+                <ExitsPanel
+                  data={exitsQuery.data}
+                  isMobile={isMobile}
+                  countries={countries}
+                  onToast={notify}
+                  onError={(error) => messageApi.error(error.message)}
+                />
 
                 <Card className="vg-takeover" title={t('pages.vpngate.takeover.title')}>
                   <div className="vg-takeover-head">

@@ -21,11 +21,8 @@ import { Controller, FormProvider, useForm, useWatch } from 'react-hook-form';
 
 import { HttpUtil, NumberFormatter, RandomUtil, SizeFormatter, Wireguard } from '@/utils';
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  inboundUsesVpngate,
-  postVpngateJson,
-  useVpngateTakeoverQuery,
-} from '@/api/queries/useVpngateTakeover';
+import { postVpngateJson, useVpngateTakeoverQuery } from '@/api/queries/useVpngateTakeover';
+import { exitForInbound, useVpngateExitsQuery } from '@/api/queries/useVpngateExits';
 import type { RealityScanResult } from '@/generated/types';
 import {
   rawInboundToFormValues,
@@ -275,10 +272,12 @@ export default function InboundFormModal({
   const queryClient = useQueryClient();
   const takeoverQuery = useVpngateTakeoverQuery();
   const takeoverState = takeoverQuery.data;
-  // Where this inbound's traffic leaves: direct from this host, or through the
-  // VPNGate exit. Kept beside the form (not in it) because it is a routing
-  // decision the panel applies after the inbound itself is saved.
-  const [exitRoute, setExitRoute] = useState<'direct' | 'vpngate'>('direct');
+  // Where this inbound's traffic leaves: 'direct', or the id of one exit
+  // (exit-1, exit-2, …). Kept beside the form (not in it) because it is a
+  // routing decision the panel applies after the inbound itself is saved.
+  const exitsQuery = useVpngateExitsQuery();
+  const exitsState = exitsQuery.data;
+  const [exitRoute, setExitRoute] = useState<string>('direct');
   const {
     fallbacks,
     hasStoredFallbacks,
@@ -530,14 +529,19 @@ export default function InboundFormModal({
       setExitRoute('direct');
       return;
     }
-    if (exitSeeded || !takeoverState) return;
+    if (exitSeeded || !exitsState) return;
+    const defaultExit = exitsState.exits.find((exit) => exit.isDefault) ?? exitsState.exits[0];
     if (mode === 'edit') {
-      setExitRoute(inboundUsesVpngate(takeoverState, dbInbound?.tag) ? 'vpngate' : 'direct');
+      setExitRoute(exitForInbound(exitsState, dbInbound?.tag)?.id ?? 'direct');
+    } else if (takeoverState?.mode === 'all' && defaultExit) {
+      // A brand-new inbound is born into "all inbounds": name the exit that
+      // actually carries that traffic instead of leaving the picker on direct.
+      setExitRoute(defaultExit.id);
     } else {
-      setExitRoute(takeoverState.mode === 'all' ? 'vpngate' : 'direct');
+      setExitRoute('direct');
     }
     setExitSeeded(true);
-  }, [open, exitSeeded, takeoverState, mode, dbInbound?.tag]);
+  }, [open, exitSeeded, exitsState, takeoverState, mode, dbInbound?.tag]);
 
   useEffect(() => {
     if (!open) return;
@@ -642,10 +646,34 @@ export default function InboundFormModal({
    * back, because the inbound is valid either way.
    */
   const applyExitRoute = async (tag: string | undefined) => {
-    if (!takeoverState || !tag) return;
+    if (!tag) return;
+    // Multi-exit path: the choice is one managed rule per inbound, written into
+    // the Xray template by the panel. Direct simply removes the binding.
+    if (exitsState) {
+      const currentSlot = exitsState.bindings?.[tag];
+      const currentExit = currentSlot
+        ? (exitsState.exits.find((exit) => exit.slot === currentSlot)?.id ?? '')
+        : '';
+      const target = exitRoute === 'direct' ? '' : exitRoute;
+      if ((currentExit || '') === target) return;
+      const msg = await postVpngateJson('/panel/api/vpngate/exits/bind', {
+        inboundTag: tag,
+        exitId: target,
+      });
+      if (!msg?.success) {
+        messageApi.warning(
+          t('pages.inbounds.form.exitApplyFailed', { msg: msg?.msg || t('somethingWentWrong') }),
+        );
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['vpngate'] });
+      queryClient.invalidateQueries({ queryKey: ['inbounds-list'] });
+      return;
+    }
+    if (!takeoverState) return;
     const current = takeoverState.inboundTags ?? [];
     let next: { mode: 'selected'; tags: string[] } | null = null;
-    if (exitRoute === 'vpngate') {
+    if (exitRoute !== 'direct') {
       // "All inbounds" already covers a new one.
       if (takeoverState.mode === 'all') return;
       next = { mode: 'selected', tags: Array.from(new Set([...current, tag])) };
@@ -775,23 +803,32 @@ export default function InboundFormModal({
       */}
       <div className="inbound-exit-field">
         <span className="inbound-exit-label">{t('pages.inbounds.form.exitRoute')}</span>
-        <Radio.Group
+        <Select
           value={exitRoute}
-          onChange={(event) => setExitRoute(event.target.value as 'direct' | 'vpngate')}
-          optionType="button"
-          buttonStyle="solid"
-          disabled={!takeoverState}
+          onChange={(value: string) => setExitRoute(value)}
+          disabled={!exitsState && !takeoverState}
+          style={{ minWidth: 220 }}
           options={[
             { value: 'direct', label: t('pages.inbounds.form.exitDirect') },
-            { value: 'vpngate', label: t('pages.inbounds.form.exitVpngate') },
+            ...(exitsState?.exits ?? []).map((exit) => ({
+              value: exit.id,
+              label: `${exit.name}${exit.running ? '' : ` (${t('pages.vpngate.disconnected')})`}`,
+            })),
+            // With no exit list (engine unavailable) keep the legacy takeover
+            // choice reachable so a save never silently drops the route.
+            ...(!exitsState && takeoverState
+              ? [{ value: 'vpngate', label: t('pages.inbounds.form.exitVpngate') }]
+              : []),
           ]}
         />
         <p className="inbound-exit-hint">
-          {takeoverState?.mode === 'all'
-            ? t('pages.inbounds.form.exitAllHint')
-            : takeoverState?.mode === 'manual'
-              ? t('pages.inbounds.form.exitManualHint')
-              : t('pages.inbounds.form.exitHint')}
+          {exitsState
+            ? t('pages.inbounds.form.exitSelectHint')
+            : takeoverState?.mode === 'all'
+              ? t('pages.inbounds.form.exitAllHint')
+              : takeoverState?.mode === 'manual'
+                ? t('pages.inbounds.form.exitManualHint')
+                : t('pages.inbounds.form.exitHint')}
         </p>
       </div>
 

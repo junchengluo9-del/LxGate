@@ -818,7 +818,8 @@
         "exitHint": "选择 VPNGate 出口后，保存时会把该入站加入接管规则，其客户端流量从隧道出去。",
         "exitAllHint": "当前接管模式为「全部入站走 VPNGate」，所有入站都走 VPNGate。若选择本机直连，其余入站会被切换为「指定入站」接管，本入站不走 VPNGate。",
         "exitManualHint": "当前为「仅手动分流」。保存为 VPNGate 出口会把接管模式切换为「指定入站」并加入本入站。",
-        "exitApplyFailed": "入站已保存，但出口去向未应用：{msg}"
+        "exitApplyFailed": "入站已保存，但出口去向未应用：{msg}",
+        "exitSelectHint": "该入站从所选出口出站；选「直连」则不经隧道、直接用本机 IP。每个出口都是独立的 VPNGate 隧道，出口 IP 各不相同。"
       },
       "info": {
         "mode": "模式",
@@ -2692,6 +2693,40 @@
           "rule": "托管规则",
           "engine": "引擎 API"
         }
+      },
+      "exits": {
+        "title": "多住宅出口",
+        "hint": "每个出口一条独立隧道，各有自己的策略路由表与本地代理端口；每个入站端口只走其中一个出口。",
+        "create": "新建出口",
+        "createTitle": "新建出口",
+        "createHint": "系统会自动分配空闲的隧道网卡、策略路由表与本地代理端口。新建后不会自动连接，需你手动选择节点。",
+        "namePlaceholder": "出口 {slot}",
+        "name": "名称",
+        "slot": "出口 {slot}",
+        "memoryLine": "已启用 {active} / 共 {configured} 个出口 · 可用内存 {available} MB（为系统保留 {reserve} MB，单隧道约 {perTunnel} MB）",
+        "memoryOk": "最多可同时承载 {count} 个出口",
+        "memoryLow": "内存已不足以再开一条隧道",
+        "memoryWarnTitle": "当前内存不足以再启动新隧道",
+        "memoryWarnBody": "已在运行的出口不会被断开或抢占。请先断开不用的出口，或给 VPS 扩容后再激活新出口。",
+        "empty": "还没有出口",
+        "unavailable": "引擎未运行，暂时读不到出口列表",
+        "noNode": "尚未连接节点",
+        "idle": "空闲",
+        "connectHint": "按该出口自己的策略自动挑选最佳节点，并跳过其它出口正在使用的节点。",
+        "switchNode": "换节点",
+        "policy": "策略",
+        "editTitle": "出口策略 · {name}",
+        "save": "保存",
+        "saved": "出口已保存",
+        "created": "出口已创建",
+        "delete": "删除",
+        "deleted": "已删除「{name}」，使用它的入站已回到直连",
+        "deleteTitle": "删除「{name}」？",
+        "deleteBody": "该出口的隧道会停止，Xray 出站与分流规则一并移除，原使用它的入站改为直连。默认出口不可删除。",
+        "policyHint": "每个出口可单独设置国家、IP 类型与收藏节点回退；节点池共享，同一节点不会同时给两个出口使用。",
+        "pickExit": "连接到…",
+        "occupiedBy": "已被「{name}」占用",
+        "connectedToast": "出口已连接"
       }
     },
     "system": {

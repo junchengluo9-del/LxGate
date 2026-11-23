@@ -819,7 +819,8 @@
         "exitHint": "Saved with VPNGate, this inbound is added to the takeover rule and its clients leave through the tunnel.",
         "exitAllHint": "Takeover is set to \"All inbounds\", so every inbound already exits through VPNGate. Choosing Direct moves the others into \"Selected inbounds\" without this one.",
         "exitManualHint": "Takeover is manual. Saving with VPNGate switches it to \"Selected inbounds\" and adds this inbound.",
-        "exitApplyFailed": "Inbound saved, but the exit route was not applied: {msg}"
+        "exitApplyFailed": "Inbound saved, but the exit route was not applied: {msg}",
+        "exitSelectHint": "The inbound leaves through the chosen exit; \"Direct\" sends it out from this server without a tunnel. Each exit is a separate VPNGate tunnel with its own IP."
       },
       "info": {
         "mode": "Mode",
@@ -2692,6 +2693,40 @@
           "rule": "Managed rule",
           "engine": "Engine API"
         }
+      },
+      "exits": {
+        "title": "Residential exits",
+        "hint": "One exit per area: each has its own tunnel, policy table and local proxy port, and inbound ports pick exactly one of them.",
+        "create": "New exit",
+        "createTitle": "Create an exit",
+        "createHint": "The panel assigns a free tunnel device, policy table and loopback proxy port. Nothing connects until you say so.",
+        "namePlaceholder": "Exit {slot}",
+        "name": "Name",
+        "slot": "exit {slot}",
+        "memoryLine": "{active} of {configured} exits active · {available} MB free, {reserve} MB reserved for the system, ~{perTunnel} MB per tunnel",
+        "memoryOk": "Room for up to {count} active exits",
+        "memoryLow": "No memory for another tunnel",
+        "memoryWarnTitle": "This host cannot take another tunnel right now",
+        "memoryWarnBody": "Running exits keep working and are never stopped. Disconnect one, or add memory to the VPS, before activating another exit.",
+        "empty": "No exits yet",
+        "unavailable": "The exit list is unavailable while the engine is down",
+        "noNode": "No node connected",
+        "idle": "Idle",
+        "connectHint": "Connect this exit to the best node its own policy accepts, skipping nodes other exits use.",
+        "switchNode": "Change node",
+        "policy": "Policy",
+        "editTitle": "Exit policy · {name}",
+        "save": "Save",
+        "saved": "Exit saved",
+        "created": "Exit created",
+        "delete": "Delete",
+        "deleted": "\"{name}\" deleted; its inbounds go direct",
+        "deleteTitle": "Delete \"{name}\"?",
+        "deleteBody": "The tunnel stops, its Xray outbound and routing rule are removed, and the inbounds that used it fall back to direct. The default exit cannot be deleted.",
+        "policyHint": "Each exit has its own country, IP type and favourites policy; the node pool stays shared and a node is never used by two exits at once.",
+        "pickExit": "Connect to…",
+        "occupiedBy": "Already used by \"{name}\"",
+        "connectedToast": "Exit connected"
       }
     },
     "system": {
