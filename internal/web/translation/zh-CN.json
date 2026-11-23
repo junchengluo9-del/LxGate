@@ -2716,7 +2716,8 @@
         "disconnectHint": "断开「{name}」",
         "savePolicy": "保存策略"
       },
-      "toUltra": "切换到极暗模式"
+      "toUltra": "切换到极暗模式",
+      "exitsOnline": "{count} 个出口在线"
     },
     "system": {
       "updateAvailable": "有可用更新",

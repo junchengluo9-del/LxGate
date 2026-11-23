@@ -2716,7 +2716,8 @@
         "disconnectHint": "Disconnect “{name}”",
         "savePolicy": "Save policy"
       },
-      "toUltra": "Switch to ultra-dark mode"
+      "toUltra": "Switch to ultra-dark mode",
+      "exitsOnline": "{count} exits online"
     },
     "system": {
       "updateAvailable": "Update available",

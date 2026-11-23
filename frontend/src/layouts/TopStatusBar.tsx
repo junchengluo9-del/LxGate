@@ -14,6 +14,7 @@ import {
 
 import { HttpUtil } from '@/utils';
 import { pauseAnimationsUntilLeave, useTheme } from '@/hooks/useTheme';
+import type { VpngateExitsPayload } from '@/api/queries/useVpngateExits';
 import './TopStatusBar.css';
 
 /** Xray state as /panel/api/server/status reports it. */
@@ -106,10 +107,49 @@ export default function TopStatusBar() {
     retry: false,
   });
 
+  // Multi-exit makes the legacy single-exit state the wrong source: it is
+  // cleared and rebuilt while the engine re-tests nodes, so a capsule fed from
+  // it read "idle" next to two live tunnels. The exit list is the truth.
+  const exitsQuery = useQuery({
+    queryKey: ['topbar', 'vpngate-exits'],
+    queryFn: async (): Promise<VpngateExitsPayload> => {
+      const msg = await HttpUtil.get<VpngateExitsPayload>('/panel/api/vpngate/exits', undefined, {
+        silent: true,
+      });
+      if (!msg?.success) throw new Error(msg?.msg || 'exit list unavailable');
+      return { exits: msg.obj?.exits ?? [], bindings: msg.obj?.bindings ?? {} };
+    },
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
+    staleTime: 5_000,
+    retry: false,
+  });
+
   const xrayRunning = statusQuery.data?.xray?.state === 'running';
   const xrayState = statusQuery.data?.xray?.state ?? 'unknown';
 
   const exit = useMemo(() => {
+    const listed = exitsQuery.data?.exits ?? [];
+    const live = listed.filter((item) => item.running);
+    if (live.length > 1) {
+      return { label: t('pages.vpngate.exitsOnline', { count: live.length }), tone: 'ok' as const };
+    }
+    if (live.length === 1) {
+      const only = live[0];
+      const country =
+        only.node?.country || only.node?.country_short || t('pages.vpngate.unknownCountry');
+      const latency = Number(only.latencyMs || only.node?.latency_ms || 0);
+      const suffix = latency > 0 ? ` · ${Math.round(latency)} ms` : '';
+      return { label: `${country}${suffix}`, tone: only.proxyOk === false ? ('bad' as const) : ('ok' as const) };
+    }
+    if (listed.length > 0) {
+      return {
+        label: listed.some((item) => item.connecting)
+          ? t('pages.vpngate.connecting')
+          : t('pages.vpngate.disconnected'),
+        tone: 'warn' as const,
+      };
+    }
     const payload = vpngateQuery.data;
     if (!payload) return { label: t('pages.vpngate.statusUnknown'), tone: 'warn' as const };
     const state = payload.state ?? {};
@@ -121,11 +161,15 @@ export default function TopStatusBar() {
     }
     if (!activeID) {
       return {
-        label: state.connection_enabled === false ? t('pages.vpngate.disconnected') : t('pages.vpngate.idle'),
+        label:
+          state.connection_enabled === false
+            ? t('pages.vpngate.disconnected')
+            : t('pages.vpngate.idle'),
         tone: 'warn' as const,
       };
     }
-    const country = activeNode?.country || activeNode?.country_short || t('pages.vpngate.unknownCountry');
+    const country =
+      activeNode?.country || activeNode?.country_short || t('pages.vpngate.unknownCountry');
     const latency = Number(
       activeNode?.latency_ms || activeNode?.ping || state.active_node_latency || 0,
     );
@@ -134,7 +178,7 @@ export default function TopStatusBar() {
       label: `${country}${suffix}`,
       tone: state.proxy_ok === false ? ('bad' as const) : ('ok' as const),
     };
-  }, [vpngateQuery.data, t]);
+  }, [exitsQuery.data, vpngateQuery.data, t]);
 
   const updateAvailable = !!versionQuery.data?.updateAvailable;
   const latestVersion = versionQuery.data?.latestVersion ?? '';
