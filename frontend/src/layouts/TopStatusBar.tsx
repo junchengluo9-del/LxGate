@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button, Tooltip } from 'antd';
 import {
   CloudServerOutlined,
+  MoonFilled,
   MoonOutlined,
   SunOutlined,
   ThunderboltOutlined,
@@ -12,7 +13,7 @@ import {
 } from '@ant-design/icons';
 
 import { HttpUtil } from '@/utils';
-import { useTheme } from '@/hooks/useTheme';
+import { pauseAnimationsUntilLeave, useTheme } from '@/hooks/useTheme';
 import './TopStatusBar.css';
 
 /** Xray state as /panel/api/server/status reports it. */
@@ -62,7 +63,7 @@ interface VersionPayload {
 export default function TopStatusBar() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, isUltra, toggleTheme, toggleUltra } = useTheme();
 
   const statusQuery = useQuery({
     queryKey: ['topbar', 'server-status'],
@@ -138,7 +139,26 @@ export default function TopStatusBar() {
   const updateAvailable = !!versionQuery.data?.updateAvailable;
   const latestVersion = versionQuery.data?.latestVersion ?? '';
 
-  const handleTheme = useCallback(() => toggleTheme(), [toggleTheme]);
+  // The panel's only theme switch: light → dark → ultra dark → light. The
+  // sidebar used to carry a second copy of this cycle; with that gone this
+  // button has to reach every palette, not just the two-way light/dark flip.
+  const handleTheme = useCallback(() => {
+    pauseAnimationsUntilLeave('topbar-theme');
+    if (!isDark) {
+      toggleTheme();
+    } else if (!isUltra) {
+      toggleUltra();
+    } else {
+      toggleUltra();
+      toggleTheme();
+    }
+  }, [isDark, isUltra, toggleTheme, toggleUltra]);
+
+  const themeLabel = isUltra
+    ? t('pages.vpngate.toLight')
+    : isDark
+      ? t('pages.vpngate.toUltra')
+      : t('pages.vpngate.toDark');
 
   return (
     <div className="lg-topbar" role="region" aria-label={t('pages.vpngate.statusCapsule')}>
@@ -186,12 +206,13 @@ export default function TopStatusBar() {
       </div>
 
       <div className="lg-topbar-group">
-        <Tooltip title={isDark ? t('pages.vpngate.toLight') : t('pages.vpngate.toDark')}>
+        <Tooltip title={themeLabel}>
           <Button
+            id="topbar-theme"
             type="text"
             className="lg-topbar-icon"
-            aria-label={isDark ? t('pages.vpngate.toLight') : t('pages.vpngate.toDark')}
-            icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+            aria-label={themeLabel}
+            icon={isUltra ? <SunOutlined /> : isDark ? <MoonFilled /> : <MoonOutlined />}
             onClick={handleTheme}
           />
         </Tooltip>

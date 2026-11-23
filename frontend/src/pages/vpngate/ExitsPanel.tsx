@@ -1,20 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Alert,
-  Button,
-  Empty,
-  Input,
-  Modal,
-  Select,
-  Space,
-  Switch,
-  Tag,
-  Tooltip,
-  Segmented,
-} from 'antd';
+import { Alert, Button, Empty, Input, Modal, Space, Tag, Tooltip } from 'antd';
 import {
   ApiOutlined,
+  CheckCircleFilled,
   DeleteOutlined,
   DisconnectOutlined,
   EditOutlined,
@@ -26,24 +15,11 @@ import {
   useCreateVpngateExit,
   useDeleteVpngateExit,
   useDisconnectVpngateExit,
-  useUpdateVpngateExit,
   type VpngateExit,
   type VpngateExitsPayload,
 } from '@/api/queries/useVpngateExits';
 
 type ToastKind = 'success' | 'info' | 'warning' | 'error';
-
-interface ExitEditDraft {
-  id: string;
-  name: string;
-  mode: 'auto' | 'fixed_region' | 'fixed_ip' | 'favorites';
-  country: string;
-  ipType: string;
-  favFallback: boolean;
-}
-
-const MODES = ['auto', 'fixed_region', 'fixed_ip', 'favorites'] as const;
-const IP_TYPES = ['all', 'residential', 'hosting'] as const;
 
 const IP_TYPE_COLORS: Record<string, string> = {
   residential: 'green',
@@ -65,33 +41,51 @@ function nodeLabel(exit: VpngateExit, fallback: string) {
   return ip ? `${country} · ${ip}` : country;
 }
 
+/**
+ * One card per residential exit.
+ *
+ * The cards are a master control: clicking one selects it, and everything below
+ * the panel (inbound binding, status tiles, routing policy, the node table's
+ * connect target) follows the selection. Action buttons stop the click so
+ * pressing "disconnect" on a card never silently changes what is selected.
+ */
 export default function ExitsPanel({
   data,
-  isMobile,
-  countries,
+  selectedId,
+  onSelect,
+  onOpenPolicy,
   onToast,
   onError,
 }: {
   data: VpngateExitsPayload | undefined;
-  isMobile: boolean;
-  countries: { value: string; label: string }[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  /** Selects the exit and walks the operator down to its routing policy. */
+  onOpenPolicy: (id: string) => void;
   onToast: (kind: ToastKind, text: string) => void;
   onError: (error: Error) => void;
 }) {
   const { t } = useTranslation();
   const createExit = useCreateVpngateExit();
-  const updateExit = useUpdateVpngateExit();
   const deleteExit = useDeleteVpngateExit();
   const connectExit = useConnectVpngateExit();
   const disconnectExit = useDisconnectVpngateExit();
 
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
-  const [draft, setDraft] = useState<ExitEditDraft | null>(null);
 
   const exits = data?.exits ?? [];
   const memory = data?.memory;
-  const busy = createExit.isPending || updateExit.isPending || deleteExit.isPending;
+  const bindings = data?.bindings ?? {};
+  const busy = createExit.isPending || deleteExit.isPending;
+
+  const boundCount = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const slot of Object.values(bindings)) {
+      counts.set(slot, (counts.get(slot) ?? 0) + 1);
+    }
+    return counts;
+  }, [bindings]);
 
   const memoryText = useMemo(() => {
     if (!memory) return '';
@@ -110,38 +104,6 @@ export default function ExitsPanel({
     const used = Math.max(0, memory.totalMb - memory.availableMb);
     return Math.min(100, Math.round((used / usable) * 100));
   }, [memory]);
-
-  const openEditor = (exit: VpngateExit) => {
-    setDraft({
-      id: exit.id,
-      name: exit.name,
-      mode: (exit.routing?.routing_mode ?? 'auto') as ExitEditDraft['mode'],
-      country: (exit.routing?.force_country ?? '').toUpperCase(),
-      ipType: exit.routing?.routing_ip_type ?? 'all',
-      favFallback: exit.routing?.fav_fail_fallback !== false,
-    });
-  };
-
-  const submitEditor = () => {
-    if (!draft) return;
-    updateExit.mutate(
-      {
-        id: draft.id,
-        name: draft.name.trim() || undefined,
-        routing_mode: draft.mode,
-        force_country: draft.country,
-        routing_ip_type: draft.ipType,
-        fav_fail_fallback: draft.favFallback,
-      },
-      {
-        onSuccess: (msg) => {
-          onToast('success', (msg as { msg?: string })?.msg || t('pages.vpngate.exits.saved'));
-          setDraft(null);
-        },
-        onError,
-      },
-    );
-  };
 
   const submitCreate = () => {
     createExit.mutate(newName.trim(), {
@@ -233,11 +195,35 @@ export default function ExitsPanel({
             const status = exitStatus(exit);
             const node = exit.node;
             const ipType = (node?.ip_type || '').toLowerCase();
+            const selected = exit.id === selectedId;
+            const bound = boundCount.get(exit.slot) ?? 0;
             return (
-              <article key={exit.id} className={`vg-exit-card ${status}`}>
+              <article
+                key={exit.id}
+                className={`vg-exit-card ${status}${selected ? ' is-selected' : ''}`}
+                onClick={() => onSelect(exit.id)}
+              >
                 <header className="vg-exit-head">
                   <div className="vg-exit-identity">
-                    <span className="vg-exit-name">{exit.name}</span>
+                    {/* The named control is the keyboard path to selection; the
+                        card's own click is the mouse shortcut for the same act. */}
+                    <button
+                      type="button"
+                      className="vg-exit-pick"
+                      aria-pressed={selected}
+                      aria-label={t('pages.vpngate.exits.select', { name: exit.name })}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelect(exit.id);
+                      }}
+                    >
+                      {selected ? (
+                        <CheckCircleFilled className="vg-exit-pick-icon" aria-hidden />
+                      ) : (
+                        <span className="vg-exit-pick-dot" aria-hidden />
+                      )}
+                      <span className="vg-exit-name">{exit.name}</span>
+                    </button>
                     <Tag bordered={false} className="vg-exit-slot">
                       {t('pages.vpngate.exits.slot', { slot: exit.slot })}
                     </Tag>
@@ -253,6 +239,12 @@ export default function ExitsPanel({
                         : t('pages.vpngate.disconnected')}
                   </span>
                 </header>
+
+                {selected && (
+                  <p className="vg-exit-current lg-subtitle">
+                    {t('pages.vpngate.exits.selectedHint', { name: exit.name })}
+                  </p>
+                )}
 
                 <div className="vg-exit-node">
                   <span className="lg-mono">
@@ -284,9 +276,18 @@ export default function ExitsPanel({
                   <span>table {exit.table}</span>
                   <span>:{exit.proxyPort}</span>
                   <span>{exit.outboundTag}</span>
+                  <span>
+                    {t('pages.vpngate.exits.boundCount', {
+                      count: bound,
+                      total: data?.inbounds?.length ?? 0,
+                    })}
+                  </span>
                 </div>
 
-                <footer className="vg-exit-actions">
+                <footer
+                  className="vg-exit-actions"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <Space size={6} wrap>
                     <Tooltip title={t('pages.vpngate.exits.connectHint')}>
                       <Button
@@ -317,8 +318,7 @@ export default function ExitsPanel({
                     <Button
                       size="small"
                       icon={<EditOutlined />}
-                      onClick={() => openEditor(exit)}
-                      disabled={busy}
+                      onClick={() => onOpenPolicy(exit.id)}
                     >
                       {t('pages.vpngate.exits.policy')}
                     </Button>
@@ -378,150 +378,6 @@ export default function ExitsPanel({
           onPressEnter={submitCreate}
         />
       </Modal>
-
-      <Modal
-        title={draft ? t('pages.vpngate.exits.editTitle', { name: draft.name }) : ''}
-        open={!!draft}
-        onCancel={() => setDraft(null)}
-        onOk={submitEditor}
-        okText={t('pages.vpngate.exits.save')}
-        cancelText={t('cancel')}
-        confirmLoading={updateExit.isPending}
-        width={isMobile ? undefined : 560}
-        destroyOnHidden
-      >
-        {draft && (
-          <div className="vg-exit-editor">
-            <label className="vg-field">
-              <span className="vg-field-label">{t('pages.vpngate.exits.name')}</span>
-              <Input
-                value={draft.name}
-                maxLength={48}
-                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-              />
-            </label>
-
-            <div className="vg-field">
-              <span className="vg-field-label">{t('pages.vpngate.mode')}</span>
-              <Segmented
-                block={isMobile}
-                value={draft.mode}
-                onChange={(value) => setDraft({ ...draft, mode: value as ExitEditDraft['mode'] })}
-                options={MODES.map((value) => ({
-                  value,
-                  label: t(`pages.vpngate.modes.${value}`),
-                }))}
-              />
-            </div>
-
-            <label className="vg-field">
-              <span className="vg-field-label">{t('pages.vpngate.country')}</span>
-              <Select
-                showSearch
-                allowClear
-                disabled={draft.mode !== 'fixed_region'}
-                value={draft.country || undefined}
-                placeholder={t('pages.vpngate.countryPlaceholder')}
-                options={countries}
-                onChange={(value) => setDraft({ ...draft, country: (value ?? '').toUpperCase() })}
-                style={{ minWidth: 180 }}
-              />
-            </label>
-
-            <label className="vg-field">
-              <span className="vg-field-label">{t('pages.vpngate.ipType')}</span>
-              <Select
-                value={draft.ipType}
-                onChange={(value) => setDraft({ ...draft, ipType: value })}
-                options={IP_TYPES.map((value) => ({
-                  value,
-                  label: t(`pages.vpngate.ipTypes.${value}`),
-                }))}
-                style={{ minWidth: 150 }}
-              />
-            </label>
-
-            <label className="vg-field vg-field-switch">
-              <span className="vg-field-label">{t('pages.vpngate.favFallback')}</span>
-              <Switch
-                checked={draft.favFallback}
-                onChange={(checked) => setDraft({ ...draft, favFallback: checked })}
-              />
-            </label>
-
-            <p className="lg-subtitle">{t('pages.vpngate.exits.policyHint')}</p>
-          </div>
-        )}
-      </Modal>
     </div>
-  );
-}
-
-/** Clickable exit choice for the shared node table. */
-export function ExitConnectMenu({
-  exits,
-  nodeId,
-  occupiedBy,
-  loading,
-  onPick,
-}: {
-  exits: VpngateExit[];
-  nodeId: string;
-  occupiedBy?: { exitId?: string; name?: string };
-  loading: boolean;
-  onPick: (exitId: string) => void;
-}) {
-  const { t } = useTranslation();
-  if (exits.length === 0) {
-    return (
-      <Button size="small" disabled>
-        {t('pages.vpngate.connect')}
-      </Button>
-    );
-  }
-  if (exits.length === 1) {
-    const only = exits[0];
-    const taken = occupiedBy?.exitId && occupiedBy.exitId !== only.id;
-    return (
-      <Tooltip
-        title={
-          taken ? t('pages.vpngate.exits.occupiedBy', { name: occupiedBy?.name ?? '' }) : undefined
-        }
-      >
-        <Button
-          size="small"
-          type="primary"
-          icon={<ThunderboltOutlined />}
-          loading={loading}
-          disabled={!!taken}
-          onClick={() => onPick(only.id)}
-        >
-          {only.name}
-        </Button>
-      </Tooltip>
-    );
-  }
-  return (
-    <Select
-      size="small"
-      value={undefined}
-      placeholder={t('pages.vpngate.exits.pickExit')}
-      style={{ minWidth: 132 }}
-      loading={loading}
-      onSelect={(exitId) => onPick(String(exitId))}
-      optionLabelProp="label"
-      options={exits.map((exit) => {
-        const taken = occupiedBy?.exitId && occupiedBy.exitId !== exit.id;
-        return {
-          value: exit.id,
-          label: exit.name,
-          disabled: !!taken,
-          title: taken
-            ? t('pages.vpngate.exits.occupiedBy', { name: occupiedBy?.name ?? '' })
-            : undefined,
-        };
-      })}
-      data-node={nodeId}
-    />
   );
 }

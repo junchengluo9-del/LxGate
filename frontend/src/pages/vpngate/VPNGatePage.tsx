@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -24,16 +24,15 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
-  ApiOutlined,
   CheckCircleOutlined,
   CloudDownloadOutlined,
   DisconnectOutlined,
   LinkOutlined,
-  PoweroffOutlined,
   ReloadOutlined,
   SearchOutlined,
   SettingOutlined,
   SwapOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 
 import { HttpUtil } from '@/utils';
@@ -44,10 +43,14 @@ import {
   useSetVpngateTakeover,
   useVpngateTakeoverQuery,
   type VpngateInboundOption,
-  type VpngateTakeoverMode,
 } from '@/api/queries/useVpngateTakeover';
-import { useVpngateExitsQuery } from '@/api/queries/useVpngateExits';
-import ExitsPanel, { ExitConnectMenu } from '@/pages/vpngate/ExitsPanel';
+import {
+  useBindVpngateExit,
+  useDisconnectVpngateExit,
+  useVpngateExitsQuery,
+  type VpngateExit,
+} from '@/api/queries/useVpngateExits';
+import ExitsPanel from '@/pages/vpngate/ExitsPanel';
 import AppSidebar from '@/layouts/AppSidebar';
 import TopStatusBar from '@/layouts/TopStatusBar';
 import { setMessageInstance } from '@/utils/messageBus';
@@ -76,30 +79,9 @@ interface VpnGateNode {
   favorite?: boolean;
 }
 
-interface VpnGateState {
-  active_openvpn_node_id?: string;
-  active_node_latency?: string | number;
-  is_connecting?: boolean;
-  last_fetch_status?: string;
-  last_check_message?: string;
-  proxy_ok?: boolean;
-  proxy_ip?: string;
-  proxy_latency_ms?: number;
-  proxy_error?: string;
-  routing_mode?: RoutingMode;
-  force_country?: string;
-  routing_ip_type?: string;
-  connection_enabled?: boolean;
-  fixed_node_id?: string;
-  favorite_node_ids?: string[];
-  fav_fail_fallback?: boolean;
-  target_valid_nodes?: number;
-  blacklisted_nodes?: number;
-}
-
 interface NodesPayload {
   nodes?: VpnGateNode[];
-  state?: VpnGateState;
+  state?: Record<string, unknown>;
 }
 
 interface ServiceLine {
@@ -127,19 +109,10 @@ interface SupervisorStatus {
   dataDir?: string;
 }
 
-interface BindingState {
-  tag?: string;
-  bound?: boolean;
-  proxyAddress?: string;
-  socksUrl?: string;
-  ruleExample?: string;
-}
-
 interface StatusPayload {
   supervisor?: SupervisorStatus;
   engine?: { services?: ServiceLine[] };
   engineError?: string;
-  xray?: BindingState;
 }
 
 interface LogEntry {
@@ -150,7 +123,6 @@ interface LogEntry {
 }
 
 const MODE_VALUES: RoutingMode[] = ['auto', 'fixed_region', 'fixed_ip', 'favorites'];
-const TAKEOVER_MODES: VpngateTakeoverMode[] = ['all', 'selected', 'manual'];
 
 /** Node list filters; every one of them narrows the table immediately. */
 type IpTypeFilter = 'all' | 'residential' | 'hosting';
@@ -163,18 +135,12 @@ const IP_TYPE_COLORS: Record<string, string> = {
   hosting: 'orange',
 };
 
-/** The engine's answer to "apply routing": a code the UI can translate. */
-interface RoutingFeedback {
+/** The engine's answer to a policy save; only `level` drives how it is shown. */
+interface PolicyFeedback {
   code?: string;
   level?: 'success' | 'info' | 'warning';
   message?: string;
-  policy?: string;
-  mode?: RoutingMode;
-  country?: string;
-  ip_type?: string;
   node?: string;
-  node_ip_type?: string;
-  candidates?: number;
 }
 
 function nodeIpType(node: VpnGateNode) {
@@ -197,19 +163,6 @@ function toneForNode(node: VpnGateNode): 'ok' | 'warn' | 'bad' {
   return 'bad';
 }
 
-/** The takeover draft the operator is editing, before it is applied. */
-interface TakeoverDraft {
-  mode: VpngateTakeoverMode;
-  tags: string[];
-}
-
-function sameTags(a: string[], b: string[]) {
-  if (a.length !== b.length) return false;
-  const left = [...a].sort();
-  const right = [...b].sort();
-  return left.every((tag, index) => tag === right[index]);
-}
-
 export default function VPNGatePage() {
   const { t } = useTranslation();
   const { isDark, isUltra, antdThemeConfig } = useTheme();
@@ -229,8 +182,12 @@ export default function VPNGatePage() {
   const [ipTypeFilter, setIpTypeFilter] = useState<IpTypeFilter>('all');
   const [countryFilter, setCountryFilter] = useState('all');
   const [onlyAvailable, setOnlyAvailable] = useState(false);
-  const [draft, setDraft] = useState<TakeoverDraft | null>(null);
-  const [draftDirty, setDraftDirty] = useState(false);
+  // The exit the whole page is about. Everything under the cards -- inbound
+  // binding, status tiles, routing policy, the node table's connect target --
+  // reads this one value, so the operator never configures "some other exit".
+  const [selectedExitId, setSelectedExitId] = useState('exit-1');
+  const [bindingTag, setBindingTag] = useState<string | null>(null);
+  const [bulkBinding, setBulkBinding] = useState(false);
 
   // A poll that fails while the engine is busy reconnecting a tunnel must not
   // wipe the page (it used to fall back to {} and the node table emptied):
@@ -275,13 +232,21 @@ export default function VPNGatePage() {
     retry: false,
   });
 
+  // The takeover rule still decides where the inbounds that are *not* bound to a
+  // specific exit go, so the binding panel reads it to label them honestly.
   const takeoverQuery = useVpngateTakeoverQuery();
-  const takeoverMutation = useSetVpngateTakeover();
   const takeover = takeoverQuery.data;
+  const takeoverMutation = useSetVpngateTakeover();
   // Multi-exit: one shared node pool, one exit card per slot. The panel reads
   // the same /exits payload the inbound form uses, so the exit names match.
   const exitsQuery = useVpngateExitsQuery();
   const exits = exitsQuery.data?.exits ?? [];
+  const bindings = exitsQuery.data?.bindings ?? {};
+  const registeredSlots = exitsQuery.data?.registeredSlots ?? [];
+
+  const bindExit = useBindVpngateExit();
+  const disconnectExit = useDisconnectVpngateExit();
+
   const notify = useCallback(
     (kind: 'success' | 'info' | 'warning' | 'error', text: string) => {
       if (kind === 'success') messageApi.success(text);
@@ -295,43 +260,68 @@ export default function VPNGatePage() {
   const state = nodesQuery.data?.state ?? {};
   const nodes = nodesQuery.data?.nodes ?? [];
   const supervisor = statusQuery.data?.supervisor;
-  const binding = statusQuery.data?.xray;
-  const inbounds = takeover?.inbounds ?? [];
+  const inbounds: VpngateInboundOption[] = exitsQuery.data?.inbounds ?? takeover?.inbounds ?? [];
 
-  // The engine is the source of truth for routing; seed the controls from it once
-  // and then leave the operator's edits alone.
-  const [seeded, setSeeded] = useState(false);
+  const selectedExit = useMemo(
+    () => exits.find((exit) => exit.id === selectedExitId) ?? exits[0],
+    [exits, selectedExitId],
+  );
+
+  // The default exit is exit-1; once the list arrives -- or the selected exit is
+  // deleted from its card -- the selection falls back to a card that exists.
   useEffect(() => {
-    if (seeded || !state.routing_mode) return;
-    // The engine stores whatever the caller sent: this page saves the two-letter
-    // code, older configs hold the Chinese country name. Show the code so the
-    // select has a matching option, but keep an unknown value as it is.
-    const seedCountry = (raw?: string) => {
+    if (exits.length === 0) return;
+    if (!exits.some((exit) => exit.id === selectedExitId)) {
+      setSelectedExitId(exits[0].id);
+    }
+  }, [exits, selectedExitId]);
+
+  const exitBySlot = useMemo(() => {
+    const map = new Map<number, VpngateExit>();
+    for (const exit of exits) map.set(exit.slot, exit);
+    return map;
+  }, [exits]);
+
+  // Slot 1 is the @vpngate-out outbound, the one a global takeover rule targets.
+  const takeoverExit = useMemo(() => {
+    const ruleMatchesEveryInbound = takeover?.mode === 'all';
+    const ruleMatchesSome = takeover?.mode === 'selected' && takeover.inboundTags.length > 0;
+    return ruleMatchesEveryInbound || ruleMatchesSome ? exitBySlot.get(1) : undefined;
+  }, [takeover, exitBySlot]);
+
+  const seedCountry = useCallback(
+    (raw?: string) => {
       const value = (raw ?? '').trim();
       if (!value) return '';
       const upper = value.toUpperCase();
       if (nodes.some((node) => (node.country_short || '').toUpperCase() === upper)) return upper;
       return nodes.find((node) => node.country === value)?.country_short?.toUpperCase() ?? value;
-    };
-    setMode(state.routing_mode);
-    setCountry(seedCountry(state.force_country));
-    setIpType(state.routing_ip_type || 'all');
-    setFavFallback(state.fav_fail_fallback !== false);
-    setSeeded(true);
-  }, [
-    state.routing_mode,
-    state.force_country,
-    state.routing_ip_type,
-    state.fav_fail_fallback,
-    nodes,
-    seeded,
-  ]);
+    },
+    [nodes],
+  );
 
-  // The takeover draft mirrors the server until the operator touches it.
+  // The routing controls follow the selected exit. They are re-seeded when that
+  // exit's saved policy changes on the server -- not on every poll, and never
+  // while the operator is editing, which is what the signature guards.
+  const policySignature = selectedExit
+    ? JSON.stringify([
+        selectedExit.id,
+        selectedExit.routing?.routing_mode ?? 'auto',
+        selectedExit.routing?.force_country ?? '',
+        selectedExit.routing?.routing_ip_type ?? 'all',
+        selectedExit.routing?.fav_fail_fallback !== false,
+      ])
+    : '';
+  const seededSignature = useRef('');
   useEffect(() => {
-    if (!takeover || draftDirty) return;
-    setDraft({ mode: takeover.mode, tags: takeover.inboundTags });
-  }, [takeover, draftDirty]);
+    if (!selectedExit || !policySignature || seededSignature.current === policySignature) return;
+    seededSignature.current = policySignature;
+    const routing = selectedExit.routing ?? {};
+    setMode((routing.routing_mode ?? 'auto') as RoutingMode);
+    setCountry(seedCountry(routing.force_country));
+    setIpType(routing.routing_ip_type ?? 'all');
+    setFavFallback(routing.fav_fail_fallback !== false);
+  }, [selectedExit, policySignature, seedCountry]);
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['vpngate'] });
@@ -358,48 +348,28 @@ export default function VPNGatePage() {
     },
   });
 
-  // "Apply routing" answers with what the new policy means for the live node:
-  // kept, switching, or no node in the pool fits yet. Show that sentence rather
-  // than a generic "done", which made the button look like it did nothing.
-  const applyRouting = useMutation({
+  // Saving writes the policy of the *selected* exit only; the engine answers
+  // with what that means for the live node (kept, switching, or nothing fits),
+  // and that sentence is the toast.
+  const savePolicy = useMutation({
     mutationFn: async () => {
-      const msg = await postVpngateJson<RoutingFeedback>('/panel/api/vpngate/routing', {
-        mode,
-        country,
-        ipType,
-        favFallback,
+      if (!selectedExit) throw new Error(t('pages.vpngate.exits.empty'));
+      const msg = await postVpngateJson<PolicyFeedback>('/panel/api/vpngate/exits/update', {
+        id: selectedExit.id,
+        routing_mode: mode,
+        force_country: country,
+        routing_ip_type: ipType,
+        fav_fail_fallback: favFallback,
       });
       if (!msg?.success) throw new Error(msg?.msg || t('somethingWentWrong'));
       return msg;
     },
     onSuccess: (msg) => {
-      const feedback: RoutingFeedback = msg?.obj ?? {};
-      const parts: string[] = [];
-      if (feedback.mode === 'fixed_region' && feedback.country) parts.push(feedback.country);
-      if (feedback.ip_type && feedback.ip_type !== 'all') {
-        parts.push(t(`pages.vpngate.ipTypes.${feedback.ip_type}`));
-      }
-      const policy = parts.join(' · ') || t('pages.vpngate.routingFeedback.anyPolicy');
-      const key = feedback.code ? `pages.vpngate.routingFeedback.${feedback.code}` : '';
-      const translated = key
-        ? t(key, {
-            policy,
-            node: feedback.node || '—',
-            nodeType:
-              feedback.node_ip_type && feedback.node_ip_type !== 'unknown'
-                ? t(`pages.vpngate.ipTypeTags.${feedback.node_ip_type}`)
-                : t('pages.vpngate.ipTypeTags.unknown'),
-            count: feedback.candidates ?? 0,
-          })
-        : '';
-      const text = translated && translated !== key ? translated : msg?.msg || feedback.message;
-      if (text) {
-        if (feedback.level === 'warning') messageApi.warning(text, 7);
-        else if (feedback.level === 'info') messageApi.info(text, 6);
-        else messageApi.success(text, 5);
-      } else {
-        messageApi.success(t('pages.vpngate.toasts.actionDone'));
-      }
+      const feedback = (msg?.obj ?? {}) as PolicyFeedback;
+      const text = msg?.msg || feedback.message || t('pages.vpngate.exits.saved');
+      if (feedback.level === 'warning') messageApi.warning(text, 7);
+      else if (feedback.level === 'info') messageApi.info(text, 6);
+      else messageApi.success(text, 5);
       invalidate();
     },
     onError: (error: Error) => {
@@ -408,8 +378,8 @@ export default function VPNGatePage() {
     },
   });
 
-  // A node is connected *to an exit*: with one exit the button names it, with
-  // several the operator picks which exit should leave from this node.
+  // A node is connected *to an exit*: the table's button always means the exit
+  // selected above, whose name it carries.
   const connectToExit = useCallback(
     (nodeId: string, exitId: string) => {
       action.mutate({
@@ -420,46 +390,73 @@ export default function VPNGatePage() {
     [action],
   );
 
-  const setTakeoverMode = useCallback(
-    (next: VpngateTakeoverMode) => {
-      setDraft((current) => ({
-        mode: next,
-        tags: current?.tags ?? takeover?.inboundTags ?? [],
-      }));
-      setDraftDirty(true);
+  const toggleBinding = useCallback(
+    (inboundTag: string, on: boolean) => {
+      if (!selectedExit || bindingTag) return;
+      setBindingTag(inboundTag);
+      bindExit.mutate(
+        { inboundTag, exitId: on ? selectedExit.id : '' },
+        {
+          onSuccess: () =>
+            messageApi.success(
+              on
+                ? t('pages.vpngate.takeover.boundToast', { name: selectedExit.name })
+                : t('pages.vpngate.takeover.directToast'),
+            ),
+          onError: (error: Error) => messageApi.error(error.message),
+          onSettled: () => setBindingTag(null),
+        },
+      );
     },
-    [takeover],
+    [selectedExit, bindingTag, bindExit, messageApi, t],
   );
 
-  const toggleTakeoverTag = useCallback((tag: string, on: boolean) => {
-    setDraftDirty(true);
-    setDraft((current) => {
-      const base = current ?? { mode: 'selected' as VpngateTakeoverMode, tags: [] };
-      const tags = on
-        ? Array.from(new Set([...base.tags, tag]))
-        : base.tags.filter((value) => value !== tag);
-      return { mode: base.mode === 'manual' ? 'selected' : base.mode, tags };
-    });
-  }, []);
+  // Each bind rewrites the Xray template and reloads Xray, so a batch is run one
+  // inbound at a time rather than fanned out: parallel writes would race.
+  const moveInbounds = useCallback(
+    async (toSelected: boolean) => {
+      if (!selectedExit || bulkBinding) return;
+      const targets = inbounds.filter((inbound) =>
+        toSelected
+          ? bindings[inbound.tag] !== selectedExit.slot
+          : bindings[inbound.tag] === selectedExit.slot,
+      );
+      if (targets.length === 0) return;
+      setBulkBinding(true);
+      let done = 0;
+      for (const inbound of targets) {
+        try {
+          await bindExit.mutateAsync({
+            inboundTag: inbound.tag,
+            exitId: toSelected ? selectedExit.id : '',
+          });
+          done += 1;
+        } catch (error) {
+          messageApi.error((error as Error).message);
+          break;
+        }
+      }
+      setBulkBinding(false);
+      if (done === 0) return;
+      messageApi.success(
+        toSelected
+          ? t('pages.vpngate.takeover.movedToast', { count: done, name: selectedExit.name })
+          : t('pages.vpngate.takeover.freedToast', { count: done }),
+      );
+    },
+    [selectedExit, bulkBinding, inbounds, bindings, bindExit, messageApi, t],
+  );
 
-  const applyTakeover = useCallback(() => {
-    if (!draft) return;
-    takeoverMutation.mutate(
-      { mode: draft.mode, inboundTags: draft.mode === 'all' ? [] : draft.tags },
-      {
-        onSuccess: (saved) => {
-          setDraftDirty(false);
-          setDraft({ mode: saved.mode, tags: saved.inboundTags });
-          messageApi.success(t('pages.vpngate.takeover.applied'));
-          invalidate();
-        },
-        onError: (error: Error) => {
-          messageApi.error(error.message);
-          invalidate();
-        },
-      },
-    );
-  }, [draft, takeoverMutation, messageApi, t, invalidate]);
+  const scrollToPolicy = useCallback((exitId: string) => {
+    setSelectedExitId(exitId);
+    window.setTimeout(() => {
+      const card = document.getElementById('vg-routing');
+      if (!card) return;
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      card.classList.add('is-flash');
+      window.setTimeout(() => card.classList.remove('is-flash'), 1400);
+    }, 60);
+  }, []);
 
   const countries = useMemo(() => {
     const seen = new Map<string, string>();
@@ -559,7 +556,7 @@ export default function VPNGatePage() {
       {
         title: '',
         key: 'actions',
-        width: 150,
+        width: 170,
         align: 'right',
         render: (_value, node) => {
           const owner = exitOwners.get(node.id);
@@ -572,18 +569,30 @@ export default function VPNGatePage() {
               </Tooltip>
             );
           }
+          if (!selectedExit) {
+            return (
+              <Button size="small" disabled>
+                {t('pages.vpngate.connect')}
+              </Button>
+            );
+          }
           return (
-            <ExitConnectMenu
-              exits={exits}
-              nodeId={node.id}
-              loading={action.isPending}
-              onPick={(exitId) => connectToExit(node.id, exitId)}
-            />
+            <Tooltip title={t('pages.vpngate.exits.connectHint')}>
+              <Button
+                size="small"
+                type="primary"
+                icon={<ThunderboltOutlined />}
+                loading={action.isPending}
+                onClick={() => connectToExit(node.id, selectedExit.id)}
+              >
+                {t('pages.vpngate.exits.connectTo', { name: selectedExit.name })}
+              </Button>
+            </Tooltip>
           );
         },
       },
     ],
-    [t, action.isPending, connectToExit, exits, exitOwners],
+    [t, action.isPending, connectToExit, exitOwners, selectedExit],
   );
 
   const logsText = useMemo(() => {
@@ -597,22 +606,37 @@ export default function VPNGatePage() {
       .join('\n');
   }, [logsQuery.data]);
 
-  const activeNode = nodes.find((node) => node.id === state.active_openvpn_node_id);
-  const exitLabel =
-    activeNode?.country || activeNode?.country_short || t('pages.vpngate.unknownCountry');
-  const exitLatency =
-    activeNode?.latency_ms || activeNode?.ping || Number(state.active_node_latency) || 0;
-
   const pageClass = `vpngate-page ${isDark ? 'is-dark' : ''} ${isUltra ? 'is-ultra' : ''}`.trim();
   const unavailable = supervisor && (!supervisor.enabled || !supervisor.available);
 
-  const draftMode = draft?.mode ?? takeover?.mode ?? 'manual';
-  const draftTags = draft?.tags ?? [];
-  const selectedTags = draftMode === 'all' ? inbounds.map((inbound) => inbound.tag) : draftTags;
-  const takeoverPending =
-    !!takeover &&
-    (draftMode !== takeover.mode ||
-      !sameTags(draftMode === 'all' ? [] : draftTags, takeover.inboundTags));
+  const selectedNode = selectedExit?.node;
+  const selectedCountry = selectedNode?.country || selectedNode?.country_short || '';
+  const selectedIp = selectedExit?.proxyIp || selectedNode?.ip || '';
+  const selectedLatency =
+    selectedExit?.latencyMs || selectedNode?.latency_ms || 0;
+  const boundHere = selectedExit
+    ? inbounds.filter((inbound) => bindings[inbound.tag] === selectedExit.slot).length
+    : 0;
+  // A global takeover rule can still be carrying inbounds to the exit that owns
+  // vpngate-out. Those are not per-inbound bindings, so the panel shows them
+  // indeterminate rather than pretending they are (or are not) checked.
+  const implicitHere =
+    !!selectedExit && !!takeoverExit && takeoverExit.slot === selectedExit.slot;
+  const outboundRegistered = !!selectedExit && registeredSlots.includes(selectedExit.slot);
+  const exitTone = !selectedExit
+    ? 'bad'
+    : selectedExit.connecting
+      ? 'warn'
+      : selectedExit.running
+        ? 'ok'
+        : 'bad';
+  const exitStateLabel = !selectedExit
+    ? t('pages.vpngate.statusUnknown')
+    : selectedExit.connecting
+      ? t('pages.vpngate.connecting')
+      : selectedExit.running
+        ? t('pages.vpngate.connected')
+        : t('pages.vpngate.disconnected');
 
   const advancedItems = [
     {
@@ -627,52 +651,22 @@ export default function VPNGatePage() {
           <div className="vg-advanced-grid">
             <div className="vg-field">
               <span className="vg-field-label">{t('pages.vpngate.takeover.advanced.proxy')}</span>
-              <span className="lg-mono">{binding?.socksUrl || supervisor?.socksUrl || '—'}</span>
+              <span className="lg-mono">
+                {selectedExit?.socksUrl || selectedExit?.proxyAddress || '—'}
+              </span>
             </div>
             <div className="vg-field">
               <span className="vg-field-label">{t('pages.vpngate.takeover.advanced.device')}</span>
-              <span className="lg-mono">{supervisor?.openvpnDev || 'tun0'}</span>
+              <span className="lg-mono">{selectedExit?.dev || '—'}</span>
             </div>
             <div className="vg-field">
               <span className="vg-field-label">{t('pages.vpngate.takeover.advanced.rule')}</span>
-              <span className="lg-mono">
-                {binding?.bound
-                  ? `#${takeover?.ruleIndex ?? -1} · ${binding?.tag || 'vpngate-out'}`
-                  : t('pages.vpngate.notBound')}
-              </span>
+              <span className="lg-mono">{selectedExit?.outboundTag || '—'}</span>
             </div>
             <div className="vg-field">
               <span className="vg-field-label">{t('pages.vpngate.takeover.advanced.engine')}</span>
               <span className="lg-mono">{supervisor?.apiAddress || '127.0.0.1:18787'}</span>
             </div>
-          </div>
-
-          <div className="vg-bind">
-            <div>
-              <h4 className="lg-title">{t('pages.vpngate.xrayBindTitle')}</h4>
-              <p className="lg-subtitle">{t('pages.vpngate.xrayBindHint')}</p>
-              {binding?.ruleExample && <pre className="lg-log vg-rule">{binding.ruleExample}</pre>}
-            </div>
-            <Space wrap>
-              <Button
-                type={binding?.bound ? 'default' : 'primary'}
-                icon={<ApiOutlined />}
-                loading={action.isPending}
-                onClick={() => action.mutate({ url: '/panel/api/vpngate/xray-bind' })}
-              >
-                {binding?.bound
-                  ? t('pages.vpngate.rebindOutbound')
-                  : t('pages.vpngate.bindOutbound')}
-              </Button>
-              <Button
-                icon={<PoweroffOutlined />}
-                disabled={!binding?.bound}
-                loading={action.isPending}
-                onClick={() => action.mutate({ url: '/panel/api/vpngate/xray-unbind' })}
-              >
-                {t('pages.vpngate.unbindOutbound')}
-              </Button>
-            </Space>
           </div>
         </div>
       ),
@@ -730,120 +724,162 @@ export default function VPNGatePage() {
 
                 <ExitsPanel
                   data={exitsQuery.data}
-                  isMobile={isMobile}
-                  countries={countries}
+                  selectedId={selectedExit?.id ?? selectedExitId}
+                  onSelect={setSelectedExitId}
+                  onOpenPolicy={scrollToPolicy}
                   onToast={notify}
                   onError={(error) => messageApi.error(error.message)}
                 />
 
-                <Card className="vg-takeover" title={t('pages.vpngate.takeover.title')}>
-                  <div className="vg-takeover-head">
-                    <Segmented
-                      block={isMobile}
-                      size={isMobile ? 'middle' : 'large'}
-                      className="vg-takeover-modes"
-                      value={draftMode}
-                      onChange={(value) => setTakeoverMode(value as VpngateTakeoverMode)}
-                      options={TAKEOVER_MODES.map((value) => ({
-                        value,
-                        label: t(`pages.vpngate.takeover.modes.${value}`),
-                      }))}
-                    />
-                    <p className="lg-subtitle">{t(`pages.vpngate.takeover.hints.${draftMode}`)}</p>
+                {/* Inbound binding: it is always the selected exit's panel, so the
+                    title names the exit instead of asking which one is meant. */}
+                <Card
+                  id="vg-binding"
+                  className="vg-takeover"
+                  title={
+                    <span className="vg-card-title">
+                      {t('pages.vpngate.takeover.bindTitle')}
+                      {selectedExit && (
+                        <span className="vg-card-title-target"> · {selectedExit.name}</span>
+                      )}
+                    </span>
+                  }
+                  extra={
+                    selectedExit && (
+                      <Tag bordered={false} className="vg-exit-slot lg-mono">
+                        {selectedExit.dev}
+                      </Tag>
+                    )
+                  }
+                >
+                  <p className="lg-subtitle vg-bind-hint">
+                    {selectedExit
+                      ? t('pages.vpngate.takeover.bindHint', { name: selectedExit.name })
+                      : t('pages.vpngate.exits.empty')}
+                  </p>
+
+                  <div className="vg-inbound-head">
+                    <span className="vg-inbound-count">
+                      {t('pages.vpngate.takeover.bindCount', {
+                        bound: boundHere,
+                        total: inbounds.length,
+                      })}
+                    </span>
+                    <Space size={8} wrap>
+                      <Button
+                        size="small"
+                        type="primary"
+                        ghost
+                        loading={bulkBinding}
+                        disabled={!selectedExit || inbounds.length === 0}
+                        onClick={() => void moveInbounds(true)}
+                      >
+                        {t('pages.vpngate.takeover.bindAll')}
+                      </Button>
+                      <Button
+                        size="small"
+                        loading={bulkBinding}
+                        disabled={!selectedExit || boundHere === 0}
+                        onClick={() => void moveInbounds(false)}
+                      >
+                        {t('pages.vpngate.takeover.bindDirect')}
+                      </Button>
+                    </Space>
                   </div>
 
-                  {draftMode === 'selected' && (
-                    <div className="vg-inbound-picker">
-                      <div className="vg-inbound-head">
-                        <span className="vg-inbound-count">
-                          {t('pages.vpngate.takeover.selectedCount', {
-                            count: draftTags.length,
-                            total: inbounds.length,
-                          })}
-                        </span>
-                        <Space size={8}>
-                          <Button
-                            size="small"
-                            onClick={() => {
-                              setDraftDirty(true);
-                              setDraft({
-                                mode: 'selected',
-                                tags: inbounds.map((inbound) => inbound.tag),
-                              });
-                            }}
-                            disabled={inbounds.length === 0}
+                  {inbounds.length === 0 ? (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={t('pages.vpngate.takeover.inboundsEmpty')}
+                    />
+                  ) : (
+                    <div className="vg-inbound-list">
+                      {inbounds.map((inbound) => {
+                        const here = !!selectedExit && bindings[inbound.tag] === selectedExit.slot;
+                        const other = here
+                          ? undefined
+                          : exitBySlot.get(bindings[inbound.tag] ?? 0);
+                        const carried = !here && !other && implicitHere;
+                        return (
+                          <label
+                            key={inbound.tag || inbound.id}
+                            className={`vg-inbound-item${here ? ' is-on' : ''}${other ? ' is-other' : ''}`}
                           >
-                            {t('pages.vpngate.takeover.selectAll')}
-                          </Button>
-                          <Button
-                            size="small"
-                            onClick={() => {
-                              setDraftDirty(true);
-                              setDraft({ mode: 'selected', tags: [] });
-                            }}
-                            disabled={draftTags.length === 0}
-                          >
-                            {t('pages.vpngate.takeover.clearAll')}
-                          </Button>
-                        </Space>
-                      </div>
-                      {inbounds.length === 0 ? (
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description={t('pages.vpngate.takeover.inboundsEmpty')}
-                        />
-                      ) : (
-                        <div className="vg-inbound-list">
-                          {inbounds.map((inbound: VpngateInboundOption) => (
-                            <label
-                              key={inbound.tag || inbound.id}
-                              className={`vg-inbound-item${draftTags.includes(inbound.tag) ? ' is-on' : ''}`}
-                            >
-                              <Checkbox
-                                checked={draftTags.includes(inbound.tag)}
-                                onChange={(event) =>
-                                  toggleTakeoverTag(inbound.tag, event.target.checked)
-                                }
-                              />
-                              <span className="vg-inbound-main">
-                                <span className="vg-inbound-remark">
-                                  {inbound.remark || inbound.tag || `#${inbound.id}`}
-                                </span>
-                                <span className="vg-inbound-meta">
-                                  <Tag bordered={false} color="purple">
-                                    {inbound.protocol}
-                                  </Tag>
-                                  <span className="lg-mono">:{inbound.port}</span>
-                                  {inbound.enable === false && (
-                                    <Tag bordered={false}>{t('disabled')}</Tag>
-                                  )}
-                                </span>
+                            <Checkbox
+                              checked={here}
+                              indeterminate={carried}
+                              disabled={!selectedExit || bindingTag === inbound.tag || bulkBinding}
+                              onChange={(event) =>
+                                toggleBinding(inbound.tag, event.target.checked)
+                              }
+                            />
+                            <span className="vg-inbound-main">
+                              <span className="vg-inbound-remark">
+                                {inbound.remark || inbound.tag || `#${inbound.id}`}
                               </span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
+                              <span className="vg-inbound-meta">
+                                <Tag bordered={false} color="purple">
+                                  {inbound.protocol}
+                                </Tag>
+                                <span className="lg-mono">:{inbound.port}</span>
+                                {here && (
+                                  <Tag bordered={false} color="blue">
+                                    {t('pages.vpngate.takeover.onThisExit')}
+                                  </Tag>
+                                )}
+                                {other && (
+                                  <Tag bordered={false} color="geekblue">
+                                    {t('pages.vpngate.takeover.currentlyOn', { name: other.name })}
+                                  </Tag>
+                                )}
+                                {!here && !other && takeoverExit && (
+                                  <Tag bordered={false} color="orange">
+                                    {t('pages.vpngate.takeover.viaTakeover', {
+                                      name: takeoverExit.name,
+                                    })}
+                                  </Tag>
+                                )}
+                                {!here && !other && !takeoverExit && (
+                                  <Tag bordered={false}>
+                                    {t('pages.vpngate.takeover.direct')}
+                                  </Tag>
+                                )}
+                                {inbound.enable === false && (
+                                  <Tag bordered={false}>{t('disabled')}</Tag>
+                                )}
+                              </span>
+                            </span>
+                          </label>
+                        );
+                      })}
                     </div>
                   )}
 
-                  <div className="vg-takeover-foot">
+                  <div className="vg-bind-foot">
                     <span className="lg-subtitle">
-                      {draftMode === 'all'
-                        ? t('pages.vpngate.takeover.modes.all')
-                        : t('pages.vpngate.takeover.selectedCount', {
-                            count: selectedTags.length,
-                            total: inbounds.length,
-                          })}
+                      {takeoverExit
+                        ? t('pages.vpngate.takeover.fallbackNote', { name: takeoverExit.name })
+                        : t('pages.vpngate.takeover.directNote')}
                     </span>
-                    <Button
-                      type="primary"
-                      icon={<SwapOutlined />}
-                      loading={takeoverMutation.isPending}
-                      disabled={!draft || !takeoverPending}
-                      onClick={applyTakeover}
-                    >
-                      {t('pages.vpngate.takeover.apply')}
-                    </Button>
+                    {takeoverExit && (
+                      <Button
+                        size="small"
+                        type="link"
+                        loading={takeoverMutation.isPending}
+                        onClick={() =>
+                          takeoverMutation.mutate(
+                            { mode: 'manual', inboundTags: [] },
+                            {
+                              onSuccess: () =>
+                                messageApi.success(t('pages.vpngate.takeover.ruleCleared')),
+                              onError: (error: Error) => messageApi.error(error.message),
+                            },
+                          )
+                        }
+                      >
+                        {t('pages.vpngate.takeover.clearRule')}
+                      </Button>
+                    )}
                   </div>
                 </Card>
 
@@ -851,67 +887,81 @@ export default function VPNGatePage() {
                   <div className="lg-card vg-tile">
                     <span className="vg-tile-label">{t('pages.vpngate.tiles.engine')}</span>
                     <div className="vg-tile-value">
-                      <span
-                        className={`lg-pill ${
-                          supervisor?.running ? 'ok' : supervisor?.available ? 'warn' : 'bad'
-                        }`}
-                      >
+                      <span className={`lg-pill ${exitTone}`}>
                         <span className="lg-dot" aria-hidden />
-                        {supervisor?.state || t('pages.vpngate.statusUnknown')}
+                        {exitStateLabel}
                       </span>
                     </div>
                     <span className="vg-tile-foot lg-mono">
-                      {t('pages.vpngate.takeover.advanced.device')}{' '}
-                      {supervisor?.openvpnDev || 'tun0'}
+                      {t('pages.vpngate.tiles.deviceLine', {
+                        dev: selectedExit?.dev || '—',
+                        table: selectedExit?.table ?? '—',
+                      })}
                     </span>
                   </div>
 
                   <div className="lg-card vg-tile">
                     <span className="vg-tile-label">{t('pages.vpngate.tiles.exit')}</span>
                     <div className="vg-tile-value">
-                      <span className={`lg-pill ${state.proxy_ok === false ? 'bad' : 'ok'}`}>
+                      <span
+                        className={`lg-pill ${
+                          selectedExit && selectedExit.proxyOk === false ? 'bad' : selectedIp ? 'ok' : 'warn'
+                        }`}
+                      >
                         <span className="lg-dot" aria-hidden />
-                        {state.active_openvpn_node_id ? exitLabel : t('pages.vpngate.disconnected')}
+                        {selectedCountry || t('pages.vpngate.disconnected')}
                       </span>
                     </div>
                     <span className="vg-tile-foot lg-num">
-                      {state.proxy_ip && state.proxy_ip !== '-' ? state.proxy_ip : '—'}
-                      {exitLatency > 0 ? ` · ${Math.round(exitLatency)} ms` : ''}
+                      {selectedIp || '—'}
+                      {selectedLatency > 0 ? ` · ${Math.round(selectedLatency)} ms` : ''}
                     </span>
                   </div>
 
                   <div className="lg-card vg-tile">
-                    <span className="vg-tile-label">{t('pages.vpngate.tiles.takeover')}</span>
+                    <span className="vg-tile-label">
+                      {t('pages.vpngate.tiles.boundInbounds')}
+                    </span>
                     <div className="vg-tile-value">
-                      <span className={`lg-pill ${draftMode === 'manual' ? 'warn' : 'ok'}`}>
+                      <span className={`lg-pill ${boundHere > 0 ? 'ok' : 'warn'}`}>
                         <span className="lg-dot" aria-hidden />
-                        {t(`pages.vpngate.takeover.modes.${draftMode}`)}
+                        <span className="lg-num vg-tile-count">{boundHere}</span>
                       </span>
                     </div>
                     <span className="vg-tile-foot">
-                      {t('pages.vpngate.tiles.nodes', { count: nodes.length })}
+                      {t('pages.vpngate.tiles.boundInboundsFoot', {
+                        total: inbounds.length,
+                      })}
                     </span>
                   </div>
 
                   <div className="lg-card vg-tile">
                     <span className="vg-tile-label">{t('pages.vpngate.tiles.xray')}</span>
                     <div className="vg-tile-value">
-                      <span className={`lg-pill ${binding?.bound ? 'ok' : 'warn'}`}>
+                      <span className={`lg-pill ${outboundRegistered ? 'ok' : 'warn'}`}>
                         <span className="lg-dot" aria-hidden />
-                        {binding?.bound
-                          ? binding?.tag || 'vpngate-out'
-                          : t('pages.vpngate.notBound')}
+                        {selectedExit?.outboundTag || 'vpngate-out'}
                       </span>
                     </div>
-                    <span className="vg-tile-foot">
-                      {t('pages.vpngate.tiles.restarts', { count: supervisor?.restarts ?? 0 })}
+                    <span className="vg-tile-foot lg-mono">
+                      {t('pages.vpngate.tiles.outboundFoot', {
+                        port: selectedExit?.proxyPort ?? '—',
+                      })}
                     </span>
                   </div>
                 </div>
 
                 <Card
+                  id="vg-routing"
                   className="vg-routing"
-                  title={t('pages.vpngate.routingTitle')}
+                  title={
+                    <span className="vg-card-title">
+                      {t('pages.vpngate.routingTitle')}
+                      {selectedExit && (
+                        <span className="vg-card-title-target"> · {selectedExit.name}</span>
+                      )}
+                    </span>
+                  }
                   extra={
                     <Space wrap>
                       <Tooltip title={t('pages.vpngate.refreshHint')}>
@@ -923,12 +973,26 @@ export default function VPNGatePage() {
                           {t('pages.vpngate.refreshNodes')}
                         </Button>
                       </Tooltip>
-                      <Tooltip title={t('pages.vpngate.disconnectHint')}>
+                      <Tooltip
+                        title={
+                          selectedExit
+                            ? t('pages.vpngate.exits.disconnectHint', { name: selectedExit.name })
+                            : t('pages.vpngate.disconnectHint')
+                        }
+                      >
                         <Button
                           danger
                           icon={<DisconnectOutlined />}
-                          loading={action.isPending}
-                          onClick={() => action.mutate({ url: '/panel/api/vpngate/disconnect' })}
+                          loading={disconnectExit.isPending}
+                          disabled={!selectedExit}
+                          onClick={() => {
+                            if (!selectedExit) return;
+                            disconnectExit.mutate(selectedExit.id, {
+                              onSuccess: () =>
+                                messageApi.success(t('pages.vpngate.toasts.disconnected')),
+                              onError: (error: Error) => messageApi.error(error.message),
+                            });
+                          }}
                         >
                           {t('pages.vpngate.disconnect')}
                         </Button>
@@ -987,15 +1051,16 @@ export default function VPNGatePage() {
                       <Button
                         type="primary"
                         icon={<SwapOutlined />}
-                        loading={applyRouting.isPending}
-                        onClick={() => applyRouting.mutate()}
+                        loading={savePolicy.isPending}
+                        disabled={!selectedExit}
+                        onClick={() => savePolicy.mutate()}
                       >
-                        {t('pages.vpngate.applyRouting')}
+                        {t('pages.vpngate.exits.savePolicy')}
                       </Button>
                     </div>
                   </div>
 
-                  <p className="lg-subtitle">{t('pages.vpngate.routingHint')}</p>
+                  <p className="lg-subtitle">{t('pages.vpngate.exits.policyHint')}</p>
                 </Card>
 
                 <Card className="vg-advanced-card" styles={{ body: { paddingTop: 4 } }}>
@@ -1030,6 +1095,14 @@ export default function VPNGatePage() {
                     </Space>
                   }
                 >
+                  <div className="vg-nodes-target">
+                    <SwapOutlined aria-hidden />
+                    <span>
+                      {selectedExit
+                        ? t('pages.vpngate.exits.connectTarget', { name: selectedExit.name })
+                        : t('pages.vpngate.exits.empty')}
+                    </span>
+                  </div>
                   <div className="vg-node-filters">
                     <Input
                       allowClear
@@ -1078,7 +1151,7 @@ export default function VPNGatePage() {
                     countryFilter={countryFilter}
                     onlyAvailable={onlyAvailable}
                     emptyText={
-                      state.last_check_message ||
+                      (state.last_check_message as string | undefined) ||
                       (state.is_connecting
                         ? t('pages.vpngate.nodesLoading')
                         : t('pages.vpngate.nodesEmpty'))

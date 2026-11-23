@@ -122,7 +122,6 @@
     "outbounds": "出站",
     "apiDocs": "API 文档",
     "hosts": "主机",
-    "docs": "文档",
     "openMenu": "打开菜单",
     "pinSidebar": "固定侧边栏",
     "unpinSidebar": "取消固定侧边栏",
@@ -2581,11 +2580,11 @@
       "tiles": {
         "engine": "引擎",
         "exit": "出口",
-        "proxy": "本地代理",
         "xray": "Xray 出站",
-        "nodes": "已缓存 {count} 个节点",
-        "restarts": "重启 {count} 次",
-        "takeover": "接管模式"
+        "deviceLine": "{dev} · 路由表 {table}",
+        "boundInbounds": "已绑入站",
+        "boundInboundsFoot": "面板内共 {total} 个入站",
+        "outboundFoot": "本地端口 :{port}"
       },
       "routingTitle": "路由策略",
       "mode": "模式",
@@ -2593,8 +2592,6 @@
       "countryPlaceholder": "选择国家/地区",
       "ipType": "出口 IP 类型",
       "favFallback": "收藏节点失败时自动降级",
-      "applyRouting": "应用路由",
-      "routingHint": "切换模式或节点不会改变本地代理端口，因此指向 vpngate-out 的 Xray 出站无需重启。",
       "modes": {
         "auto": "智能自动",
         "fixed_region": "固定国家",
@@ -2624,17 +2621,6 @@
       "filterEmpty": "没有符合当前筛选条件的节点",
       "filteredCount": "显示 {count} / {total} 个节点",
       "filteredCountAll": "共 {total} 个节点",
-      "routingFeedback": {
-        "anyPolicy": "不限条件",
-        "saved_policy_match": "路由已保存。当前节点 {node} 仍符合「{policy}」，无需切换。",
-        "saved_switching": "路由已保存。当前节点不符合「{policy}」，正在切换到 {node}（{nodeType}）。",
-        "saved_connecting": "路由已保存，正在按「{policy}」连接 {node}（{nodeType}）。",
-        "saved_pending_switch": "路由已保存。当前节点不符合「{policy}」，节点检测结束后会自动切换。",
-        "saved_no_match_kept": "路由已保存，但节点池里暂无符合「{policy}」的可用节点；暂时保留当前节点 {node}，出现符合条件的节点后会自动切换。",
-        "saved_no_match": "路由已保存，但节点池里暂无符合「{policy}」的可用节点。",
-        "saved_fixed_ip": "路由已保存。固定节点模式由你指定的节点决定，不受国家与 IP 类型筛选影响。",
-        "saved_disabled": "路由已保存（{policy}）。当前已关闭自动连接，面板不会主动重连。"
-      },
       "refreshNodes": "更新节点",
       "refreshHint": "重新拉取 VPNGate 候选节点并测速",
       "fullCheck": "完整检测",
@@ -2647,12 +2633,6 @@
       "testSelected": "测速 {count} 个",
       "logsTitle": "实时日志",
       "logsEmpty": "今天暂无日志。",
-      "xrayBindTitle": "Xray 出站",
-      "xrayBindHint": "一键注册名为 vpngate-out 的 socks 出站，指向本地代理。在路由规则中对该 tag 分流即可走 VPNGate。",
-      "bindOutbound": "注册 vpngate-out",
-      "rebindOutbound": "重新绑定 vpngate-out",
-      "unbindOutbound": "移除出站",
-      "notBound": "未绑定",
       "columns": {
         "country": "国家",
         "ipType": "IP 类型",
@@ -2668,23 +2648,11 @@
         "disconnected": "已断开隧道"
       },
       "takeover": {
-        "title": "流量接管",
-        "hint": "选择哪些入站从 VPNGate 出口上网。面板只维护一条路由规则并自动应用到 Xray，无需手写 JSON。",
-        "applied": "接管模式已应用",
-        "apply": "应用",
-        "selectAll": "全选",
-        "clearAll": "清空",
-        "selectedCount": "已选 {count} / {total} 个入站",
         "inboundsEmpty": "还没有入站。先添加一个入站，再勾选需要走 VPNGate 的入站。",
         "modes": {
           "all": "全部入站走 VPNGate",
           "selected": "指定入站走 VPNGate",
           "manual": "仅手动分流"
-        },
-        "hints": {
-          "all": "本面板所有入站的流量都从 VPNGate 出口出去。内网、DNS 与面板 API 规则优先级更高，面板本身仍可正常访问。",
-          "selected": "只有下面勾选的入站走 VPNGate，其余入站仍然从本机直连出去。",
-          "manual": "面板不添加任何路由规则，你自己的 Xray 路由配置保持原样。"
         },
         "advanced": {
           "title": "高级技术设置",
@@ -2692,7 +2660,24 @@
           "device": "隧道网卡",
           "rule": "托管规则",
           "engine": "引擎 API"
-        }
+        },
+        "bindTitle": "入站绑定",
+        "bindHint": "勾选即把该入站改绑到「{name}」；取消勾选则回落为直连。半选表示全局接管规则已把它带到本出口，勾一下即变成明确绑定。",
+        "bindCount": "本出口已绑 {bound} / {total} 个入站",
+        "bindAll": "全部接入",
+        "bindDirect": "全部直连",
+        "boundToast": "该入站已改为走「{name}」",
+        "directToast": "该入站已恢复直连",
+        "movedToast": "已把 {count} 个入站改到「{name}」",
+        "freedToast": "已把 {count} 个入站恢复直连",
+        "onThisExit": "本出口",
+        "currentlyOn": "当前：{name}",
+        "viaTakeover": "接管 → {name}",
+        "direct": "直连",
+        "fallbackNote": "取消勾选的入站会回落到全局接管规则，仍走「{name}」。",
+        "directNote": "未绑定的入站走直连。",
+        "clearRule": "改为直连兜底",
+        "ruleCleared": "已关闭全局接管规则，未绑定的入站现在直连"
       },
       "exits": {
         "title": "多住宅出口",
@@ -2701,7 +2686,6 @@
         "createTitle": "新建出口",
         "createHint": "系统会自动分配空闲的隧道网卡、策略路由表与本地代理端口。新建后不会自动连接，需你手动选择节点。",
         "namePlaceholder": "出口 {slot}",
-        "name": "名称",
         "slot": "出口 {slot}",
         "memoryLine": "已启用 {active} / 共 {configured} 个出口 · 可用内存 {available} MB（为系统保留 {reserve} MB，单隧道约 {perTunnel} MB）",
         "memoryOk": "最多可同时承载 {count} 个出口",
@@ -2715,8 +2699,6 @@
         "connectHint": "按该出口自己的策略自动挑选最佳节点，并跳过其它出口正在使用的节点。",
         "switchNode": "换节点",
         "policy": "策略",
-        "editTitle": "出口策略 · {name}",
-        "save": "保存",
         "saved": "出口已保存",
         "created": "出口已创建",
         "delete": "删除",
@@ -2724,10 +2706,17 @@
         "deleteTitle": "删除「{name}」？",
         "deleteBody": "该出口的隧道会停止，Xray 出站与分流规则一并移除，原使用它的入站改为直连。默认出口不可删除。",
         "policyHint": "每个出口可单独设置国家、IP 类型与收藏节点回退；节点池共享，同一节点不会同时给两个出口使用。",
-        "pickExit": "连接到…",
         "occupiedBy": "已被「{name}」占用",
-        "connectedToast": "出口已连接"
-      }
+        "connectedToast": "出口已连接",
+        "select": "选中「{name}」",
+        "selectedHint": "下方所有配置都在修改「{name}」",
+        "boundCount": "{count}/{total} 个入站",
+        "connectTo": "连接到 {name}",
+        "connectTarget": "本表「连接」按钮会把节点接到「{name}」；要换目标请点上方出口卡片。",
+        "disconnectHint": "断开「{name}」",
+        "savePolicy": "保存策略"
+      },
+      "toUltra": "切换到极暗模式"
     },
     "system": {
       "updateAvailable": "有可用更新",
