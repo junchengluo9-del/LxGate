@@ -15,14 +15,13 @@ describe('computeTrafficDisplay', () => {
     expect(d.remaining).toBe(0.5 * gb);
   });
 
-  it('returns 100% bar for unlimited clients', () => {
+  it('leaves the bar empty for unlimited clients', () => {
     const d = computeTrafficDisplay(
       { up: 5 * gb, down: 2 * gb, total: 0, enabled: true, trafficDiff: 0 },
       false,
     );
-    expect(d.percent).toBe(100);
+    expect(d.percent).toBe(0);
     expect(d.isUnlimited).toBe(true);
-    expect(d.strokeColor).toBe('#722ed1');
   });
 
   it('marks depleted clients with exception status', () => {

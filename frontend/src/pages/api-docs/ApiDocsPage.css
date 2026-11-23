@@ -27,13 +27,11 @@
 
 .api-docs-page .content-area {
   padding: 16px;
-  max-width: 100%;
 }
 
 @media (max-width: 768px) {
   .api-docs-page .content-area {
     padding: 8px;
-    padding-top: 56px;
   }
 }
 
@@ -53,6 +51,28 @@
 
 .api-docs-page .swagger-ui .section-tabs {
   margin-top: 20px;
+}
+
+/* 15 Swagger tags never fit one row on a laptop, and antd's overflow measure
+   left the last one cut in half ("System &"). The strip scrolls sideways with
+   the wheel or a trackpad instead, and the tabs are tight enough that the
+   common tags fit before any scrolling starts. */
+.api-docs-page .swagger-ui .section-tabs .ant-tabs-nav-wrap {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scroll-behavior: smooth;
+}
+
+.api-docs-page .swagger-ui .section-tabs .ant-tabs-nav-list {
+  transform: none !important;
+}
+
+.api-docs-page .swagger-ui .section-tabs .ant-tabs-nav-operations {
+  display: none;
+}
+
+.api-docs-page .swagger-ui .section-tabs .ant-tabs-tab {
+  padding-inline: 10px;
 }
 
 .api-docs-page .websocket-events pre {

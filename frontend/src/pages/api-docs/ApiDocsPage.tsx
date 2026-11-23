@@ -88,7 +88,6 @@ export default function ApiDocsPage() {
         <AppSidebar />
 
         <Layout className="content-shell">
-
           <TopStatusBar />
           <Layout.Content className="content-area">
             <Tabs
@@ -111,7 +110,7 @@ export default function ApiDocsPage() {
                 },
                 {
                   key: 'websocket-events',
-                  label: 'WebSocket events',
+                  label: t('pages.apiDocs.websocketEvents'),
                   children: (
                     <section className="websocket-events">
                       <Typography.Paragraph>

@@ -4,11 +4,6 @@
   padding: 24px;
 }
 
-.sys-page {
-  max-width: 1080px;
-  margin: 0 auto;
-}
-
 .sys-hero-main {
   display: flex;
   align-items: flex-start;

@@ -206,6 +206,21 @@
   min-height: 0;
 }
 
+/* 13 routes plus the eight settings children outgrow a 993px-tall window, and the
+   last two routes ended up behind a scrollbar nobody noticed. A denser rack keeps
+   every route reachable without a second navigation inside the page. */
+.sider-nav .ant-menu-item,
+.sider-nav .ant-menu-submenu-title {
+  height: 36px;
+  line-height: 36px;
+  margin-block: 2px;
+}
+
+.sider-nav .ant-menu-sub .ant-menu-item {
+  height: 32px;
+  line-height: 32px;
+}
+
 .sider-utility {
   flex: 0 0 auto;
   border-top: 1px solid var(--ant-color-border-secondary);

@@ -66,6 +66,42 @@
   background: transparent;
 }
 
+/* One content column for every page: the panels centre on the same axis and
+   1280px is as wide as a table-heavy panel stays readable, so switching pages
+   no longer jumps the layout from 1640px to 1080px. The status bar follows the
+   same column (layouts/TopStatusBar.css), which puts its left edge on the same
+   line as the cards below it. */
+:root {
+  --lg-content-max: 1280px;
+}
+
+:is(
+    .index-page,
+    .clients-page,
+    .inbounds-page,
+    .xray-page,
+    .settings-page,
+    .nodes-page,
+    .groups-page,
+    .hosts-page,
+    .vpngate-page,
+    .system-page,
+    .api-docs-page
+  )
+  .content-area {
+  width: 100%;
+  max-width: calc(var(--lg-content-max) + 48px);
+  margin-inline: auto;
+}
+
+/* A tall form (the inbound form carries 13 rows) must never push the modal's
+   footer off screen: the body scrolls, the title and the buttons stay put. */
+.ant-modal .ant-modal-body {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .index-page .content-area,
 .clients-page .content-area,
 .inbounds-page .content-area,

@@ -32,10 +32,11 @@ export function computeTrafficDisplay(input: TrafficDisplayInput, isDark: boolea
   const total = input.total || 0;
   const isUnlimited = total <= 0;
 
-  let percent = 100;
-  if (!isUnlimited) {
-    percent = Math.min(100, Math.max(0, (used / total) * 100));
-  }
+  // An unlimited client has no quota to fill: the track stays empty and the ∞
+  // icon in the limit column carries the meaning. A 100% bar read as "quota
+  // used up" at 0 B, and the inbounds page already shows "0 B / ∞" for the
+  // same client.
+  const percent = isUnlimited ? 0 : Math.min(100, Math.max(0, (used / total) * 100));
 
   const isDepleted = !isUnlimited && used >= total;
   const remaining = isUnlimited ? 0 : Math.max(0, total - used);

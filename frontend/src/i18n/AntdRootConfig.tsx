@@ -33,9 +33,13 @@ const FORM_CONFIG: ConfigProviderProps['form'] = {
   tooltip: { icon: <QuestionCircleOutlined aria-hidden /> },
 };
 
+// antd spaces the two characters of a CJK label ("保 存"); no other button in
+// this panel is spaced like that, so the auto-insert is off globally.
+const BUTTON_CONFIG: ConfigProviderProps['button'] = { autoInsertSpace: false };
+
 export function AntdRootConfig({ children }: { children: ReactNode }) {
   return (
-    <ConfigProvider locale={antdLocale} form={FORM_CONFIG}>
+    <ConfigProvider locale={antdLocale} form={FORM_CONFIG} button={BUTTON_CONFIG}>
       {children}
     </ConfigProvider>
   );

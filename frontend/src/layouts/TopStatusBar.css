@@ -6,7 +6,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 20px 24px 0;
+  /* Sits on the same column as the content below it (--lg-content-max is set in
+     styles/page-shell.css), so the rail and the cards share one left edge. */
+  width: 100%;
+  max-width: var(--lg-content-max, 1280px);
+  margin: 20px auto 0;
   padding: 6px 8px 6px 12px;
   border: 1px solid var(--lg-border, rgba(255, 255, 255, 0.08));
   border-radius: 999px;
@@ -100,7 +104,11 @@
 
 @media (max-width: 768px) {
   .lg-topbar {
-    margin: 12px 12px 0;
+    /* The fixed hamburger owns the top-left corner (40px wide from 12px), and the
+       rail used to start underneath it, covering the Xray capsule. On a phone the
+       rail starts after the button instead; no page needs extra top padding. */
+    width: auto;
+    margin: 12px 12px 0 60px;
     position: static;
     border-radius: 16px;
     padding: 8px;
