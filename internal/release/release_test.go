@@ -165,7 +165,7 @@ func TestReleaseSendsConfiguredToken(t *testing.T) {
 	}
 }
 
-func TestReleaseWithoutTokenExplainsPrivateRepo(t *testing.T) {
+func TestReleaseWithoutTokenExplainsMissingRelease(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
@@ -179,8 +179,40 @@ func TestReleaseWithoutTokenExplainsPrivateRepo(t *testing.T) {
 	if err == nil {
 		t.Fatal("a 404 without a token must be reported")
 	}
-	if !errors.Is(err, ErrAuthRequired) || !errors.Is(err, ErrNoRelease) {
-		t.Fatalf("err = %v, want ErrAuthRequired wrapping ErrNoRelease", err)
+	if !errors.Is(err, ErrNoRelease) {
+		t.Fatalf("err = %v, want ErrNoRelease", err)
+	}
+	if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrTokenRejected) {
+		t.Fatalf("a 404 is neither a limit nor a rejected token: %v", err)
+	}
+	// The public repository needs no token: the message may mention a private
+	// fork, but it must not tell the operator a token is required.
+	if !strings.Contains(err.Error(), "private fork") {
+		t.Fatalf("err = %v, want the private-fork caveat", err)
+	}
+}
+
+func TestReleaseWithoutTokenSurvivesAnonymousRateLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-RateLimit-Remaining", "0")
+		w.Header().Set("X-RateLimit-Reset", "1764000000")
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GITHUB_API_TOKEN", "")
+	client := NewClient("junchengluo9-del/LxGate")
+	client.SetBaseURL(server.URL)
+	_, err := client.Latest(context.Background())
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("err = %v, want ErrRateLimited", err)
+	}
+	if errors.Is(err, ErrTokenRejected) {
+		t.Fatal("an anonymous limit must not be reported as a token problem")
+	}
+	if !strings.Contains(err.Error(), "UTC") {
+		t.Fatalf("err = %v, want the reset time", err)
 	}
 }
 
@@ -194,8 +226,38 @@ func TestReleaseRejectedTokenIsReported(t *testing.T) {
 	client.SetBaseURL(server.URL)
 	client.SetToken("bad")
 	_, err := client.Latest(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "rejected the token") {
-		t.Fatalf("err = %v", err)
+	if err == nil || !errors.Is(err, ErrTokenRejected) || !strings.Contains(err.Error(), "rejected the token") {
+		t.Fatalf("err = %v, want a rejected-token error", err)
+	}
+}
+
+// A 403 with a token is still the token's fault only when the limit is not the
+// reason; a limited call reports the limit.
+func TestReleaseForbiddenWithToken(t *testing.T) {
+	cases := []struct {
+		name      string
+		remaining string
+		want      error
+	}{
+		{"limit", "0", ErrRateLimited},
+		{"token", "42", ErrTokenRejected},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("X-RateLimit-Remaining", tc.remaining)
+				w.WriteHeader(http.StatusForbidden)
+			}))
+			defer server.Close()
+
+			client := NewClient("junchengluo9-del/LxGate")
+			client.SetBaseURL(server.URL)
+			client.SetToken("ghp_example")
+			_, err := client.Latest(context.Background())
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("err = %v, want %v", err, tc.want)
+			}
+		})
 	}
 }
 

@@ -92,10 +92,6 @@
   min-width: 220px;
 }
 
-.sys-token-hint {
-  margin: 10px 0 0;
-}
-
 @media (max-width: 768px) {
   .sys-token-row {
     flex-direction: column;

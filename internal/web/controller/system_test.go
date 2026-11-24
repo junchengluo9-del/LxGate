@@ -264,7 +264,10 @@ func doSystemJSON(t *testing.T, router *gin.Engine, method, path string, body st
 
 // A private repository answers 404 without a token, and the panel has to say so
 // instead of "no release published yet".
-func TestSystemVersionExplainsPrivateRepoWithoutToken(t *testing.T) {
+// A 404 without a token on the public repository means there is no release to
+// install yet; the panel reports that and does not turn it into a demand for a
+// token.
+func TestSystemVersionExplainsMissingReleaseWithoutToken(t *testing.T) {
 	router, _ := newSystemDBTestRouter(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	})
@@ -276,8 +279,31 @@ func TestSystemVersionExplainsPrivateRepoWithoutToken(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if !strings.Contains(payload.Obj.CheckError, "private") {
-		t.Fatalf("checkError must point at the missing token: %q", payload.Obj.CheckError)
+	if !strings.Contains(payload.Obj.CheckError, "no published release") {
+		t.Fatalf("checkError must name the missing release: %q", payload.Obj.CheckError)
+	}
+	if strings.Contains(payload.Obj.CheckError, "is private") {
+		t.Fatalf("the public repository must not be reported as private: %q", payload.Obj.CheckError)
+	}
+}
+
+// The anonymous API limit is reported as a limit, with the token as something
+// that would raise it rather than a requirement for the check to work.
+func TestSystemVersionReportsRateLimitWithoutToken(t *testing.T) {
+	router, _ := newSystemDBTestRouter(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-RateLimit-Remaining", "0")
+		w.WriteHeader(http.StatusForbidden)
+	})
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GITHUB_API_TOKEN", "")
+
+	rec := doSystemJSON(t, router, http.MethodGet, "/panel/api/system/version", "")
+	var payload versionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.Contains(payload.Obj.CheckError, "anonymous limit") {
+		t.Fatalf("checkError must explain the limit: %q", payload.Obj.CheckError)
 	}
 }
 

@@ -263,10 +263,12 @@ export default function SystemPage() {
                       </h2>
                       <Space wrap size={8}>
                         {version?.checkError ? (
-                          /* A failed release check is not "up to date": the private
-                             repo answers 404 without a token, and the green badge
-                             used to report that as the best possible state. */
-                          <Tooltip title={t('pages.system.tokenRequiredHint')}>
+                          /* A failed release check is not "up to date": the green
+                             badge used to report an unreadable release feed as the
+                             best possible state. The panel needs no token for this
+                             public repository, so the badge only says the check did
+                             not answer; the reason is shown below. */
+                          <Tooltip title={t('pages.system.checkFailedHint')}>
                             <Tag bordered={false}>{t('pages.system.notChecked')}</Tag>
                           </Tooltip>
                         ) : (
@@ -434,9 +436,6 @@ export default function SystemPage() {
                       </Button>
                     )}
                   </div>
-                  <p className="lg-subtitle sys-token-hint">
-                    {t('pages.system.tokenRequiredHint')}
-                  </p>
                 </Card>
 
                 <Card title={t('pages.system.changelogTitle')} className="sys-changelog">
