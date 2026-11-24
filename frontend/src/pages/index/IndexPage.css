@@ -205,9 +205,36 @@
   }
 }
 
+/* Phones keep two tiles per row: one tile per row made the four vitals
+   alone roughly 1.5 screens tall before the exit / throughput cards. */
 @media (max-width: 560px) {
   .ov-vitals {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ov-tile-head {
+    padding-top: 12px;
+  }
+
+  .ov-tile-value {
+    padding-top: 8px;
+  }
+
+  .ov-tile-number {
+    font-size: 26px;
+  }
+
+  .ov-tile-detail {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ov-tile-foot {
+    padding-top: 10px;
+    font-size: 9.5px;
+    letter-spacing: 0.03em;
   }
 }
 
@@ -383,9 +410,20 @@
 }
 
 @media (max-width: 560px) {
+  /* sent | received side by side, the window average under them: stacking
+     all three added three full rows of mostly empty space on phones. */
   .ov-wide-foot {
-    flex-direction: column;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 16px;
+  }
+
+  .ov-wide-foot > div:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .ov-foot-value {
+    font-size: 16px;
   }
 
   .ov-wide-foot .ov-foot-sep {

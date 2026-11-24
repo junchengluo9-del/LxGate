@@ -2574,6 +2574,7 @@
       "unavailableTitle": "当前主机无法运行 VPNGate 引擎",
       "unavailableHint": "请安装 python3 与 openvpn；或设置 LXGATE_VPNGATE_ENABLED=0 隐藏此页面。",
       "engineErrorTitle": "引擎健康检查没有响应",
+      "openvpnMissing": "本机未安装 openvpn：引擎可以运行并列出节点，但在安装 openvpn 之前无法连接出口。",
       "tiles": {
         "engine": "引擎",
         "exit": "出口",

@@ -2535,6 +2535,9 @@
         "badVlessRoute": "Insira um único número entre 0 e 65535"
       },
       "dragToReorder": "Arraste para reordenar {name}"
+    },
+    "vpngate": {
+      "openvpnMissing": "O openvpn não está instalado neste host: o mecanismo funciona e lista os nós, mas conectar uma saída falhará até que o openvpn seja instalado."
     }
   },
   "tgbot": {

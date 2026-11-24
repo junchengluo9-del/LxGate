@@ -2574,6 +2574,7 @@
       "unavailableTitle": "VPNGate engine is not available on this host",
       "unavailableHint": "Install python3 and openvpn, or set LXGATE_VPNGATE_ENABLED=0 to hide this page.",
       "engineErrorTitle": "The engine did not answer its health probe",
+      "openvpnMissing": "openvpn is not installed on this host: the engine runs and lists nodes, but connecting an exit will fail until openvpn is installed.",
       "tiles": {
         "engine": "Engine",
         "exit": "Exit",

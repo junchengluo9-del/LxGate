@@ -2535,6 +2535,9 @@
         "badVlessRoute": "Nhập một số duy nhất từ 0 đến 65535"
       },
       "dragToReorder": "Kéo để sắp xếp lại {name}"
+    },
+    "vpngate": {
+      "openvpnMissing": "Máy chủ này chưa cài openvpn: engine vẫn chạy và liệt kê node, nhưng kết nối lối ra sẽ thất bại cho đến khi cài openvpn."
     }
   },
   "tgbot": {

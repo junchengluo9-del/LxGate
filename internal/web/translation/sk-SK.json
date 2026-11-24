@@ -2535,6 +2535,9 @@
       "routingScript": "Skript smerovania",
       "routingScriptDesc": "Cesta k súboru .lua s funkciou HandleRoute, absolútna alebo vzhľadom na priečinok bin Xray. Skript vyberá každú trasu a Xray ignoruje všetky pravidlá vrátane pravidla api panelu. Vstup api preto smerujte na výstup api, inak prestanú fungovať štatistiky spotreby aj zmeny klientov za behu. Ak súbor chýba alebo je neplatný, Xray sa nespustí.",
       "routingScriptActive": "V časti {section} je nastavený skript smerovania, preto Xray tieto pravidlá ignoruje."
+    },
+    "vpngate": {
+      "openvpnMissing": "Na tomto hostiteľovi nie je nainštalovaný openvpn: engine beží a zobrazuje uzly, ale pripojenie výstupu zlyhá, kým sa openvpn nenainštaluje."
     }
   },
   "tgbot": {

@@ -446,6 +446,10 @@ export default function GroupsPage() {
       title: t('pages.groups.name'),
       dataIndex: 'name',
       key: 'name',
+      // Without a floor the name column collapsed to one glyph on phones
+      // ("名" / "称" on two lines) while the fixed-width columns kept theirs.
+      minWidth: 120,
+      onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       render: (name: string) => (
         <Tag color="geekblue" style={{ margin: 0, fontSize: 13 }}>
           {name}
@@ -587,6 +591,7 @@ export default function GroupsPage() {
                         size="small"
                         pagination={false}
                         loading={loading}
+                        scroll={{ x: 'max-content' }}
                         locale={{
                           emptyText: (
                             <div className="card-empty">

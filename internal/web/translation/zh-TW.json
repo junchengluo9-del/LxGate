@@ -2535,6 +2535,9 @@
         "badVlessRoute": "請輸入 0 到 65535 之間的單一數字"
       },
       "dragToReorder": "拖曳以重新排列 {name}"
+    },
+    "vpngate": {
+      "openvpnMissing": "本機未安裝 openvpn：引擎可以執行並列出節點，但在安裝 openvpn 之前無法連線出口。"
     }
   },
   "tgbot": {

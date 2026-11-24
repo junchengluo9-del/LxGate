@@ -2535,6 +2535,9 @@
         "badVlessRoute": "0 ile 65535 arasında tek bir sayı girin"
       },
       "dragToReorder": "{name} öğesini yeniden sıralamak için sürükleyin"
+    },
+    "vpngate": {
+      "openvpnMissing": "Bu sunucuda openvpn yüklü değil: motor çalışır ve düğümleri listeler, ancak openvpn yüklenene kadar çıkış bağlantısı başarısız olur."
     }
   },
   "tgbot": {

@@ -51,6 +51,7 @@ import {
   type VpngateExit,
 } from '@/api/queries/useVpngateExits';
 import ExitsPanel from '@/pages/vpngate/ExitsPanel';
+import { localizeSupervisorWarning } from '@/pages/vpngate/supervisorWarning';
 import AppSidebar from '@/layouts/AppSidebar';
 import TopStatusBar from '@/layouts/TopStatusBar';
 import { setMessageInstance } from '@/utils/messageBus';
@@ -713,13 +714,17 @@ export default function VPNGatePage() {
                     message={t('pages.vpngate.unavailableTitle')}
                     description={
                       supervisor?.reason ||
-                      supervisor?.warning ||
+                      localizeSupervisorWarning(supervisor?.warning, t) ||
                       t('pages.vpngate.unavailableHint')
                     }
                   />
                 )}
                 {!unavailable && supervisor?.warning && (
-                  <Alert type="info" showIcon message={supervisor.warning} />
+                  <Alert
+                    type="info"
+                    showIcon
+                    message={localizeSupervisorWarning(supervisor.warning, t)}
+                  />
                 )}
                 {statusQuery.data?.engineError && (
                   <Alert

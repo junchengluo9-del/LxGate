@@ -2535,6 +2535,9 @@
         "badVlessRoute": "0〜65535 の単一の数値を入力してください"
       },
       "dragToReorder": "ドラッグして {name} を並べ替え"
+    },
+    "vpngate": {
+      "openvpnMissing": "このホストには openvpn がインストールされていません。エンジンは動作しノード一覧も表示できますが、openvpn をインストールするまで出口への接続は失敗します。"
     }
   },
   "tgbot": {

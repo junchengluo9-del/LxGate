@@ -98,6 +98,14 @@
     align-items: stretch;
   }
 
+  /* In a column the 280px flex-basis above turns into the input's height,
+     which rendered the token field as a ~280px tall empty box on phones. */
+  .sys-token-row .ant-input-affix-wrapper,
+  .sys-token-row .ant-input {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+
   .sys-token-row .ant-btn {
     width: 100%;
   }

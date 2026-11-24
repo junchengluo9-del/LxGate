@@ -2535,6 +2535,9 @@
         "badVlessRoute": "Masukkan satu angka antara 0 dan 65535"
       },
       "dragToReorder": "Seret untuk mengurutkan ulang {name}"
+    },
+    "vpngate": {
+      "openvpnMissing": "openvpn belum terpasang di host ini: mesin tetap berjalan dan menampilkan node, tetapi menghubungkan exit akan gagal sampai openvpn dipasang."
     }
   },
   "tgbot": {
