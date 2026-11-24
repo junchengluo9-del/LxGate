@@ -14,6 +14,7 @@ import {
   Segmented,
   Space,
   Tag,
+  Tooltip,
   message,
 } from 'antd';
 import {
@@ -29,6 +30,7 @@ import {
 
 import { ClipboardManager, HttpUtil } from '@/utils';
 import { useTheme } from '@/hooks/useTheme';
+import { formatPanelVersion } from '@/lib/panel-version';
 import AppSidebar from '@/layouts/AppSidebar';
 import TopStatusBar from '@/layouts/TopStatusBar';
 import { setMessageInstance } from '@/utils/messageBus';
@@ -130,9 +132,13 @@ export default function SystemPage() {
   const settingsQuery = useQuery({
     queryKey: ['system', 'update-settings'],
     queryFn: async (): Promise<UpdateSettingsPayload> => {
-      const msg = await HttpUtil.get<UpdateSettingsPayload>('/panel/api/system/update-settings', undefined, {
-        silent: true,
-      });
+      const msg = await HttpUtil.get<UpdateSettingsPayload>(
+        '/panel/api/system/update-settings',
+        undefined,
+        {
+          silent: true,
+        },
+      );
       return msg?.success ? (msg.obj ?? {}) : {};
     },
     retry: false,
@@ -190,7 +196,11 @@ export default function SystemPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (): Promise<UpdateResult> => {
-      const msg = await HttpUtil.post<UpdateResult>('/panel/api/system/update', {}, { silent: true });
+      const msg = await HttpUtil.post<UpdateResult>(
+        '/panel/api/system/update',
+        {},
+        { silent: true },
+      );
       if (!msg?.success) throw new Error(msg?.msg || t('somethingWentWrong'));
       return msg.obj ?? {};
     },
@@ -233,7 +243,11 @@ export default function SystemPage() {
                 title={t('somethingWentWrong')}
                 subTitle={(versionQuery.error as Error)?.message}
                 extra={
-                  <Button type="primary" icon={<ReloadOutlined />} onClick={() => versionQuery.refetch()}>
+                  <Button
+                    type="primary"
+                    icon={<ReloadOutlined />}
+                    onClick={() => versionQuery.refetch()}
+                  >
                     {t('refresh')}
                   </Button>
                 }
@@ -244,17 +258,33 @@ export default function SystemPage() {
                   <div className="sys-hero-main">
                     <div>
                       <p className="lg-subtitle">{info?.name || 'LxGate'}</p>
-                      <h2 className="sys-version lg-num">v{version?.currentVersion || '—'}</h2>
+                      <h2 className="sys-version lg-num">
+                        {formatPanelVersion(version?.currentVersion) || '—'}
+                      </h2>
                       <Space wrap size={8}>
-                        <Tag bordered={false} color={version?.updateAvailable ? 'gold' : 'green'}>
-                          {version?.updateAvailable
-                            ? t('pages.system.updateAvailable')
-                            : t('pages.system.upToDate')}
-                        </Tag>
+                        {version?.checkError ? (
+                          /* A failed release check is not "up to date": the green
+                             badge used to report an unreadable release feed as the
+                             best possible state. The panel needs no token for this
+                             public repository, so the badge only says the check did
+                             not answer; the reason is shown below. */
+                          <Tooltip title={t('pages.system.checkFailedHint')}>
+                            <Tag bordered={false}>{t('pages.system.notChecked')}</Tag>
+                          </Tooltip>
+                        ) : (
+                          <Tag bordered={false} color={version?.updateAvailable ? 'gold' : 'green'}>
+                            {version?.updateAvailable
+                              ? t('pages.system.updateAvailable')
+                              : t('pages.system.upToDate')}
+                          </Tag>
+                        )}
                         {docker && <Tag bordered={false}>Docker</Tag>}
                         {info?.devBuild && <Tag bordered={false}>dev</Tag>}
                         {version?.channel && (
-                          <Tag bordered={false} color={version.channel === 'dev' ? 'purple' : 'blue'}>
+                          <Tag
+                            bordered={false}
+                            color={version.channel === 'dev' ? 'purple' : 'blue'}
+                          >
                             {channelLabel(t, version.channel)}
                           </Tag>
                         )}
@@ -296,25 +326,27 @@ export default function SystemPage() {
                     />
                   )}
 
-                  {updateMutation.data && !updateMutation.data.started && updateMutation.data.command && (
-                    <div className="sys-command">
-                      <p className="lg-subtitle">{t('pages.system.dockerHint')}</p>
-                      <div className="sys-command-row">
-                        <Input readOnly value={updateMutation.data.command} className="lg-mono" />
-                        <Button
-                          icon={<CopyOutlined />}
-                          onClick={() => copyCommand(updateMutation.data?.command ?? '')}
-                        >
-                          {t('copy')}
-                        </Button>
+                  {updateMutation.data &&
+                    !updateMutation.data.started &&
+                    updateMutation.data.command && (
+                      <div className="sys-command">
+                        <p className="lg-subtitle">{t('pages.system.dockerHint')}</p>
+                        <div className="sys-command-row">
+                          <Input readOnly value={updateMutation.data.command} className="lg-mono" />
+                          <Button
+                            icon={<CopyOutlined />}
+                            onClick={() => copyCommand(updateMutation.data?.command ?? '')}
+                          >
+                            {t('copy')}
+                          </Button>
+                        </div>
+                        {updateMutation.data.preserveData && (
+                          <p className="lg-subtitle lg-mono">
+                            {updateMutation.data.preserveData.join(' · ')}
+                          </p>
+                        )}
                       </div>
-                      {updateMutation.data.preserveData && (
-                        <p className="lg-subtitle lg-mono">
-                          {updateMutation.data.preserveData.join(' · ')}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                    )}
 
                   {updateRunId && (
                     <div className="sys-command">
@@ -330,7 +362,9 @@ export default function SystemPage() {
                 </Card>
 
                 <Card title={t('pages.system.updateSettingsTitle')} className="sys-settings">
-                  <p className="lg-subtitle sys-settings-hint">{t('pages.system.updateSettingsHint')}</p>
+                  <p className="lg-subtitle sys-settings-hint">
+                    {t('pages.system.updateSettingsHint')}
+                  </p>
 
                   <div className="sys-setting-row">
                     <div className="sys-setting-copy">
@@ -360,7 +394,11 @@ export default function SystemPage() {
                       </p>
                       <p className="lg-subtitle">{t('pages.system.tokenHint')}</p>
                     </div>
-                    <Tag bordered={false} color={hasToken ? 'green' : 'default'} className="sys-token-state">
+                    <Tag
+                      bordered={false}
+                      color={hasToken ? 'green' : 'default'}
+                      className="sys-token-state"
+                    >
                       {hasToken
                         ? t('pages.system.tokenConfigured', {
                             mask: settingsQuery.data?.githubTokenMasked || '••••',
@@ -398,7 +436,6 @@ export default function SystemPage() {
                       </Button>
                     )}
                   </div>
-                  <p className="lg-subtitle sys-token-hint">{t('pages.system.tokenRequiredHint')}</p>
                 </Card>
 
                 <Card title={t('pages.system.changelogTitle')} className="sys-changelog">
@@ -427,7 +464,9 @@ export default function SystemPage() {
                 <Card title={t('pages.system.infoTitle')} className="sys-info">
                   <Descriptions column={{ xs: 1, sm: 1, md: 2 }} size="small" bordered={false}>
                     <Descriptions.Item label={t('pages.system.fields.version')}>
-                      <span className="lg-num">{info?.version || version?.currentVersion || '—'}</span>
+                      <span className="lg-num">
+                        {info?.version || version?.currentVersion || '—'}
+                      </span>
                     </Descriptions.Item>
                     <Descriptions.Item label={t('pages.system.fields.repo')}>
                       {info?.repo ? (
@@ -443,10 +482,14 @@ export default function SystemPage() {
                       )}
                     </Descriptions.Item>
                     <Descriptions.Item label={t('pages.system.fields.commit')}>
-                      <span className="lg-mono">{info?.buildCommit || t('pages.system.fields.none')}</span>
+                      <span className="lg-mono">
+                        {info?.buildCommit || t('pages.system.fields.none')}
+                      </span>
                     </Descriptions.Item>
                     <Descriptions.Item label={t('pages.system.fields.buildDate')}>
-                      <span className="lg-mono">{info?.buildDate || t('pages.system.fields.none')}</span>
+                      <span className="lg-mono">
+                        {info?.buildDate || t('pages.system.fields.none')}
+                      </span>
                     </Descriptions.Item>
                     <Descriptions.Item label={t('pages.system.fields.dbPath')}>
                       <span className="lg-mono">{info?.dbPath || '—'}</span>

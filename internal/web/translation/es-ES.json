@@ -122,10 +122,7 @@
     "outbounds": "Salidas",
     "apiDocs": "Documentación de la API",
     "hosts": "Hosts",
-    "docs": "Documentación",
     "openMenu": "Abrir menú",
-    "pinSidebar": "Fijar barra lateral",
-    "unpinSidebar": "Desfijar barra lateral",
     "subFormats": "Sub Formats"
   },
   "pages": {

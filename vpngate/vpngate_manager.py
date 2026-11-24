@@ -437,7 +437,17 @@ def get_state() -> dict[str, Any]:
     state["fixed_node_id"] = ui_cfg.get("fixed_node_id", "")
     state["favorite_node_ids"] = ui_cfg.get("favorite_node_ids", [])
     state["fav_fail_fallback"] = ui_cfg.get("fav_fail_fallback", True)
-    
+
+    # Multi-exit summary travels with the legacy state so the panel can render
+    # the exit cards from the same poll that feeds the node table.
+    try:
+        state["exits"] = exit_manager.summary()
+        state["memory"] = exit_manager.memory()
+    except Exception as exc:
+        print(f"[出口] 汇总失败: {exc}", flush=True)
+        state.setdefault("exits", [])
+        state.setdefault("memory", {})
+
     return state
 
 def safe_name(value: str) -> str:
@@ -1030,25 +1040,32 @@ def kill_existing_openvpn_processes() -> None:
     except Exception as e:
         print(f"[Cleanup Error] Failed to kill existing OpenVPN processes: {e}", flush=True)
 
-def update_handshake_status(line_lower: str) -> None:
+def update_handshake_status(line_lower: str, slot_id: str | None = None) -> None:
+    # Stage codes, not prose: the panel owns the wording (pages.vpngate.stages.*),
+    # so an English panel never shows a Chinese handshake line.
     status_map = {
-        "resolving": ("解析域名", "正在解析服务器域名与 IP 地址..."),
-        "udp link local": ("物理连接", "已创建本地套接字，开始尝试发送数据包..."),
-        "tcp link local": ("物理连接", "已创建本地套接字，开始尝试发送数据包..."),
-        "tls: initial packet": ("证书握手", "已成功发送首包，正在与远程服务器建立 TLS 安全通道..."),
-        "verify ok": ("证书校验", "服务器证书校验成功，正在进行身份验证..."),
-        "peer connection initiated": ("协商加密", "控制通道已建立，已初始化与服务器的加密对等连接..."),
-        "push_request": ("请求配置", "正在向服务器发送 PUSH_REQUEST 请求配置参数与 IP 分配..."),
-        "push_reply": ("应用配置", "已接收服务器 PUSH_REPLY，获取到 IP 分配，正在准备配置网卡..."),
-        "tun/tap device": ("创建网卡", "正在创建虚拟通道并打开 TUN 虚拟网卡设备..."),
-        "do_ifconfig": ("网卡配置", "正在为虚拟网卡配置 IP 地址及相关网络属性..."),
+        "resolving": ("resolve", "正在解析服务器域名与 IP 地址..."),
+        "udp link local": ("link", "已创建本地套接字，开始尝试发送数据包..."),
+        "tcp link local": ("link", "已创建本地套接字，开始尝试发送数据包..."),
+        "tls: initial packet": ("tls", "已成功发送首包，正在与远程服务器建立 TLS 安全通道..."),
+        "verify ok": ("verify", "服务器证书校验成功，正在进行身份验证..."),
+        "peer connection initiated": ("negotiate", "控制通道已建立，已初始化与服务器的加密对等连接..."),
+        "push_request": ("push", "正在向服务器发送 PUSH_REQUEST 请求配置参数与 IP 分配..."),
+        "push_reply": ("apply", "已接收服务器 PUSH_REPLY，获取到 IP 分配，正在准备配置网卡..."),
+        "tun/tap device": ("device", "正在创建虚拟通道并打开 TUN 虚拟网卡设备..."),
+        "do_ifconfig": ("ifconfig", "正在为虚拟网卡配置 IP 地址及相关网络属性..."),
     }
     for key, (short_status, detailed_desc) in status_map.items():
         if key in line_lower:
-            set_state(active_node_latency=short_status, last_check_message=detailed_desc)
+            if slot_id:
+                # Multi-exit: the stage belongs to one exit. The manager mirrors
+                # the default exit into the legacy global state on its own.
+                exit_manager.set_stage(slot_id, short_status, detailed_desc)
+            else:
+                set_state(active_node_latency=short_status, last_check_message=detailed_desc)
             break
 
-def run_openvpn_until_ready(config_file: str, keep_alive: bool, route_nopull: bool, timeout: int | None = None, dev: str | None = None) -> tuple[bool, str, subprocess.Popen[str] | None]:
+def run_openvpn_until_ready(config_file: str, keep_alive: bool, route_nopull: bool, timeout: int | None = None, dev: str | None = None, slot_id: str | None = None) -> tuple[bool, str, subprocess.Popen[str] | None]:
     dev = dev or OPENVPN_DEV
     limit = timeout if timeout is not None else OPENVPN_TEST_TIMEOUT_SECONDS
     try:
@@ -1086,7 +1103,7 @@ def run_openvpn_until_ready(config_file: str, keep_alive: bool, route_nopull: bo
                         level = "ERROR"
                     elif "warning" in line_lower or "warn" in line_lower or "deprecated" in line_lower:
                         level = "WARNING"
-                    log_to_json(level, "VPN", f"[OpenVPN] {line_str}")
+                    log_to_json(level, "VPN", f"{_slot_log_prefix(slot_id)}[OpenVPN] {line_str}")
         if not startup_done[0]:
             lines.put(None)
 
@@ -1111,7 +1128,7 @@ def run_openvpn_until_ready(config_file: str, keep_alive: bool, route_nopull: bo
                 print(f"[OpenVPN] {line}", flush=True)
         lower = line.lower()
         if keep_alive:
-            update_handshake_status(lower)
+            update_handshake_status(lower, slot_id)
         if "initialization sequence completed" in lower:
             ok = True
             message = f"OpenVPN connected in {int((time.time() - started) * 1000)} ms."
@@ -1145,29 +1162,37 @@ def run_openvpn_until_ready(config_file: str, keep_alive: bool, route_nopull: bo
     return ok, message, process
 
 
-def setup_policy_routing(interface: str | None = None) -> None:
+def setup_policy_routing(interface: str | None = None, table: int | None = None) -> None:
+    """Give one tunnel interface its own policy-routing table.
+
+    Multi-exit calls this once per exit: interface lxgtunN gets table 100+N-1,
+    so two tunnels never share `oif` rules or a default route and traffic that
+    leaves through one exit cannot fall into another exit's table.
+    """
     interface = interface or OPENVPN_DEV
+    table_no = int(table) if table else 100
+    table_text = str(table_no)
     try:
-        subprocess.run(["ip", "rule", "del", "table", "100"], capture_output=True, timeout=2)
+        subprocess.run(["ip", "rule", "del", "table", table_text], capture_output=True, timeout=2)
     except Exception:
         pass
     try:
-        subprocess.run(["ip", "route", "flush", "table", "100"], capture_output=True, timeout=2)
+        subprocess.run(["ip", "route", "flush", "table", table_text], capture_output=True, timeout=2)
     except Exception:
         pass
     
     success = False
     for attempt in range(1, 4):
         try:
-            subprocess.run(["ip", "route", "add", "default", "dev", interface, "table", "100"], check=True, timeout=2)
-            subprocess.run(["ip", "rule", "add", "oif", interface, "table", "100"], check=True, timeout=2)
+            subprocess.run(["ip", "route", "add", "default", "dev", interface, "table", table_text], check=True, timeout=2)
+            subprocess.run(["ip", "rule", "add", "oif", interface, "table", table_text], check=True, timeout=2)
             # 配置反向路径过滤 rp_filter 为 loose 模式 (2)，防止回包被内核静默丢弃
             for proc_path in ["all", "default", interface]:
                 try:
                     subprocess.run(["sysctl", "-w", f"net.ipv4.conf.{proc_path}.rp_filter=2"], capture_output=True, timeout=2)
                 except Exception:
                     pass
-            print(f"[policy_routing] Enabled policy routing for interface {interface} (attempt {attempt} success)", flush=True)
+            print(f"[policy_routing] Enabled policy routing for interface {interface} table {table_text} (attempt {attempt} success)", flush=True)
             success = True
             break
         except Exception as e:
@@ -1175,43 +1200,1196 @@ def setup_policy_routing(interface: str | None = None) -> None:
             time.sleep(1)
             
     if not success:
-        print("[路由配置失败] [错误代码 3003] [ERR_ROUTE_TABLE_ADD_FAILED] 策略路由配置失败。原因: 无法向路由表 100 添加默认路由，这可能会导致通过 VPN 接口的出站路由无法正常解析。请检查系统是否支持策略路由、iproute2 工具是否完整，以及是否具有 root 权限。", flush=True)
-        log_to_json("ERROR", "Routing", "[错误代码 3003] [ERR_ROUTE_TABLE_ADD_FAILED] 策略路由配置失败。原因: 无法向路由表 100 添加默认路由")
+        print(f"[路由配置失败] [错误代码 3003] [ERR_ROUTE_TABLE_ADD_FAILED] 策略路由配置失败（网卡 {interface} / 路由表 {table_text}）。原因: 无法向路由表添加默认路由，这可能会导致通过 VPN 接口的出站路由无法正常解析。请检查系统是否支持策略路由、iproute2 工具是否完整，以及是否具有 root 权限。", flush=True)
+        log_to_json("ERROR", "Routing", f"[错误代码 3003] [ERR_ROUTE_TABLE_ADD_FAILED] 策略路由配置失败（网卡 {interface} / 路由表 {table_text}）。原因: 无法向路由表添加默认路由")
 
-def cleanup_policy_routing() -> None:
+def cleanup_policy_routing(table: int | None = None) -> None:
+    table_text = str(int(table) if table else 100)
     try:
-        subprocess.run(["ip", "rule", "del", "table", "100"], capture_output=True, timeout=2)
-        subprocess.run(["ip", "route", "flush", "table", "100"], capture_output=True, timeout=2)
-        print("[policy_routing] Cleared policy routing table 100", flush=True)
+        subprocess.run(["ip", "rule", "del", "table", table_text], capture_output=True, timeout=2)
+        subprocess.run(["ip", "route", "flush", "table", table_text], capture_output=True, timeout=2)
+        print(f"[policy_routing] Cleared policy routing table {table_text}", flush=True)
     except Exception:
         pass
 
-def stop_active_openvpn() -> None:
-    global active_openvpn_process, active_openvpn_node_id
-    with lock:
-        cleanup_policy_routing()
-        config_to_delete = None
-        if active_openvpn_node_id:
-            nodes = read_nodes()
-            node = next((item for item in nodes if item.get("id") == active_openvpn_node_id), None)
-            if node:
-                config_to_delete = node.get("config_file")
-                
-        stop_process(active_openvpn_process)
-        active_openvpn_process = None
-        active_openvpn_node_id = ""
-        kill_existing_openvpn_processes()
-        
-        if config_to_delete:
+# ───────────────────────── 多住宅出口（Multi-Exit）─────────────────────────
+# 每个出口是一条独立的 OpenVPN 隧道，资源按槽位号固定分配，互不重叠：
+#   出口 1（默认）：网卡 lxgtun0 / 路由表 100 / 本地代理 7929 / 出站 vpngate-out
+#   出口 2        ：网卡 lxgtun1 / 路由表 101 / 本地代理 7930 / 出站 vpngate-out-2
+# 节点池由所有出口共享，但同一个节点不会被两个出口同时占用。旧版只有一条隧道
+# 的部署首次启动时自动迁移成「出口 1」，入站端口与代理端口都不变。
+EXITS_FILE = DATA_DIR / "exits.json"
+EXIT_DEFAULT_ID = "exit-1"
+EXIT_MAX_SLOTS = env_int("LXGATE_EXIT_MAX_SLOTS", 16, 1, 64)
+# 内存准入：MemAvailable 里永久留给系统和面板的安全水位（MB），以及单条隧道
+# 的保守预留（MB）。实测 RSS 高于预留时按实测值算，避免低估。
+EXIT_MEM_RESERVE_MB = env_int("LXGATE_EXIT_MEM_RESERVE_MB", 120, 16, 8192)
+EXIT_MEM_TUNNEL_MB = env_int("LXGATE_EXIT_TUNNEL_MB", 32, 4, 1024)
+EXIT_PROXY_HOST = "127.0.0.1"
+EXIT_ROUTING_MODES = ("auto", "fixed_region", "fixed_ip", "favorites")
+EXIT_IP_TYPES = ("all", "residential", "hosting")
+
+
+def _slot_log_prefix(slot_id: str | None) -> str:
+    """Log prefix so one exit's OpenVPN output is attributable in a shared log."""
+    if not slot_id or slot_id == EXIT_DEFAULT_ID:
+        return ""
+    return f"[{slot_id}] "
+
+
+def read_meminfo_mb() -> dict[str, int]:
+    """MemTotal / MemAvailable of the host in MB (0 when unknown)."""
+    total = 0
+    available = 0
+    try:
+        raw = Path("/proc/meminfo").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        try:
+            pages = os.sysconf("SC_PHYS_PAGES")
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            total = int(pages * page_size / (1024 * 1024))
+            available = total
+        except Exception:
+            return {"total": 0, "available": 0}
+        return {"total": total, "available": available}
+    free = 0
+    buffers = 0
+    cached = 0
+    for line in raw.splitlines():
+        key, _, rest = line.partition(":")
+        parts = rest.split()
+        if not parts:
+            continue
+        try:
+            value_kb = int(parts[0])
+        except ValueError:
+            continue
+        if key == "MemTotal":
+            total = value_kb // 1024
+        elif key == "MemAvailable":
+            available = value_kb // 1024
+        elif key == "MemFree":
+            free = value_kb // 1024
+        elif key == "Buffers":
+            buffers = value_kb // 1024
+        elif key == "Cached":
+            cached = value_kb // 1024
+    # Kernels older than 3.14 have no MemAvailable; approximate the old way.
+    if available <= 0:
+        available = free + buffers + cached
+    return {"total": total, "available": max(0, available)}
+
+
+def _our_openvpn_rss_mb() -> list[float]:
+    """RSS (MB) of every openvpn process started from this data directory.
+
+    Used to replace the conservative per-tunnel estimate with what tunnels on
+    this exact host actually cost.
+    """
+    if not sys.platform.startswith("linux"):
+        return []
+    marker = str(DATA_DIR)
+    sizes: list[float] = []
+    proc_root = Path("/proc")
+    try:
+        entries = list(proc_root.iterdir())
+    except OSError:
+        return []
+    for proc_dir in entries:
+        if not proc_dir.name.isdigit():
+            continue
+        try:
+            raw = (proc_dir / "cmdline").read_bytes()
+        except OSError:
+            continue
+        if not raw:
+            continue
+        args = [part.decode("utf-8", errors="replace") for part in raw.split(b"\0") if part]
+        if not args:
+            continue
+        joined = " ".join(args)
+        if "openvpn" not in Path(args[0]).name.lower():
+            continue
+        if marker not in joined:
+            continue
+        try:
+            status = (proc_dir / "status").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in status.splitlines():
+            if line.startswith("VmRSS:"):
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        sizes.append(int(parts[1]) / 1024.0)
+                    except ValueError:
+                        pass
+                break
+    return sizes
+
+
+def memory_budget(active_exits: int = 0, configured_exits: int = 0) -> dict[str, Any]:
+    """How many more tunnels this host can carry right now.
+
+    `canStartNew` is the admission gate for a *new* active tunnel. Existing
+    tunnels are never stopped to satisfy it: the worst outcome allowed here is
+    refusing one more, never an OOM kill of a running exit or of the panel.
+    """
+    mem = read_meminfo_mb()
+    measured = _our_openvpn_rss_mb()
+    measured_avg = int(round(sum(measured) / len(measured))) if measured else 0
+    per_tunnel = EXIT_MEM_TUNNEL_MB
+    source = "baseline"
+    if measured_avg >= 1:
+        per_tunnel = max(measured_avg, EXIT_MEM_TUNNEL_MB)
+        source = "measured" if measured_avg > EXIT_MEM_TUNNEL_MB else "baseline"
+    headroom = max(0, mem["available"] - EXIT_MEM_RESERVE_MB)
+    room = int(headroom // per_tunnel) if per_tunnel > 0 else 0
+    configured = max(configured_exits, active_exits)
+    suggested = min(EXIT_MAX_SLOTS, max(active_exits, active_exits + room))
+    return {
+        "totalMb": mem["total"],
+        "availableMb": mem["available"],
+        "reserveMb": EXIT_MEM_RESERVE_MB,
+        "perTunnelMb": per_tunnel,
+        "perTunnelSource": source,
+        "activeExits": active_exits,
+        "configuredExits": configured,
+        "headroomMb": headroom,
+        "canStartNew": room >= 1 and mem["total"] > 0,
+        "maxActiveExits": suggested,
+        "maxSlots": EXIT_MAX_SLOTS,
+    }
+
+
+def exit_resources(slot: int) -> dict[str, Any]:
+    """Device / policy table / proxy port for one exit slot (1-based)."""
+    slot = max(1, int(slot or 1))
+    base = OPENVPN_DEV
+    match = re.search(r"(\d+)$", base)
+    if match:
+        prefix = base[: match.start()]
+        base_index = int(match.group(1))
+    else:
+        prefix = base
+        base_index = 0
+    return {
+        "slot": slot,
+        "dev": f"{prefix}{base_index + slot - 1}",
+        "table": 100 + slot - 1,
+        "proxyPort": LOCAL_PROXY_PORT + slot - 1,
+    }
+
+
+class ExitRuntime:
+    """Per-exit runtime state: process, stage, last health result. Not persisted."""
+
+    def __init__(self, slot: int) -> None:
+        self.slot = slot
+        self.process: subprocess.Popen[str] | None = None
+        self.node_id = ""
+        # A stable code, not prose: the panel translates it (the engine has no
+        # i18n and its UI strings used to leak Chinese into the English panel).
+        self.stage = "idle"
+        self.stage_detail = ""
+        self.connecting = False
+        self.last_error = ""
+        self.latency_ms = 0
+        self.last_ping = 0.0
+        self.proxy_ok: bool | None = None
+        self.proxy_ip = ""
+        self.proxy_latency_ms = 0
+        self.proxy_error = ""
+        self.connected_at = 0.0
+        self.proxy_started = False
+        # Consecutive failed health probes. One slow probe must not tear down a
+        # tunnel that is actually carrying traffic; a second failure may.
+        self.health_failures = 0
+
+    def running(self) -> bool:
+        return self.process is not None and self.process.poll() is None
+
+
+class ExitManager:
+    """Owns every exit slot: persistence, processes, proxies and routing policy.
+
+    The legacy single-exit functions in this module are thin wrappers over exit
+    1 so an existing deployment (and the panel's old API calls) keep working.
+    """
+
+    def __init__(self) -> None:
+        self._load_lock = threading.Lock()
+        self._state_lock = threading.RLock()
+        self._loaded = False
+        self._slots: dict[str, dict[str, Any]] = {}
+        self._runtimes: dict[str, ExitRuntime] = {}
+        self._connect_locks: dict[str, threading.Lock] = {}
+        self._last_policy_warning: dict[str, str] = {}
+        # Monotonic slot counter: a deleted exit's number is never handed out
+        # again, so a stale Xray outbound/rule for vpngate-out-2 can never be
+        # silently adopted by a different exit.
+        self._next_slot = 1
+
+    # ---------------- persistence ----------------
+    def _ordered(self) -> list[dict[str, Any]]:
+        return [self._slots[key] for key in sorted(self._slots, key=lambda k: self._slots[k]["slot"])]
+
+    def _write(self) -> None:
+        write_json(EXITS_FILE, {"version": 1, "slots": self._ordered(), "nextSlot": self._next_slot})
+
+    def _routing_view(self, slot: dict[str, Any]) -> dict[str, Any]:
+        """Routing of one exit, with the default exit reading the legacy file.
+
+        Exit 1's policy lives in ui_auth.json because the single-exit panel, the
+        auto-switch path and an operator's own scripts all read it there. Extra
+        exits keep theirs in exits.json. One owner per exit means the two can
+        never disagree.
+        """
+        if slot["id"] != EXIT_DEFAULT_ID:
+            return dict(slot["routing"])
+        cfg = load_ui_config()
+        return {
+            "routing_mode": cfg.get("routing_mode", "auto"),
+            "force_country": cfg.get("force_country", ""),
+            "routing_ip_type": cfg.get("routing_ip_type", "all"),
+            "fav_fail_fallback": cfg.get("fav_fail_fallback", True),
+            "favorite_node_ids": cfg.get("favorite_node_ids") or [],
+            "fixed_node_id": cfg.get("fixed_node_id", ""),
+            "connection_enabled": cfg.get("connection_enabled", True),
+        }
+
+    def _persist_routing(self, slot_id: str, routing: dict[str, Any]) -> None:
+        if slot_id == EXIT_DEFAULT_ID:
+            ui_cfg = load_ui_config()
+            for key in (
+                "routing_mode",
+                "force_country",
+                "routing_ip_type",
+                "fav_fail_fallback",
+                "favorite_node_ids",
+                "fixed_node_id",
+                "connection_enabled",
+            ):
+                if key in routing:
+                    ui_cfg[key] = routing[key]
+            ui_cfg.pop("enable_force_country", None)
+            DATA_DIR.mkdir(exist_ok=True, parents=True)
+            (DATA_DIR / "ui_auth.json").write_text(
+                json.dumps(ui_cfg, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            return
+        with self._state_lock:
+            stored = self._slots.get(slot_id)
+            if stored is None:
+                return
+            stored["routing"].update(routing)
+            self._write()
+
+    def _default_slot_from_legacy(self) -> dict[str, Any]:
+        ui_cfg = load_ui_config()
+        return {
+            "id": EXIT_DEFAULT_ID,
+            "slot": 1,
+            "name": "出口 1",
+            "routing": {
+                "routing_mode": ui_cfg.get("routing_mode", "auto"),
+                "force_country": ui_cfg.get("force_country", ""),
+                "routing_ip_type": ui_cfg.get("routing_ip_type", "all"),
+                "fav_fail_fallback": ui_cfg.get("fav_fail_fallback", True),
+                "favorite_node_ids": ui_cfg.get("favorite_node_ids", []),
+                "fixed_node_id": ui_cfg.get("fixed_node_id", ""),
+                "connection_enabled": ui_cfg.get("connection_enabled", True),
+            },
+            "last_node_id": "",
+            "created_at": time.time(),
+        }
+
+    def _normalize_slot(self, item: dict[str, Any], slot_no: int) -> dict[str, Any]:
+        routing = item.get("routing") if isinstance(item.get("routing"), dict) else {}
+        mode = str(routing.get("routing_mode") or "auto")
+        if mode not in EXIT_ROUTING_MODES:
+            mode = "auto"
+        ip_type = str(routing.get("routing_ip_type") or "all")
+        if ip_type not in EXIT_IP_TYPES:
+            ip_type = "all"
+        fav = routing.get("favorite_node_ids")
+        favourites = []
+        if isinstance(fav, list):
+            favourites = [str(value) for value in fav if str(value).strip()]
+        slot_id = str(item.get("id") or "").strip() or f"exit-{slot_no}"
+        name = str(item.get("name") or "").strip() or f"出口 {slot_no}"
+        return {
+            "id": slot_id,
+            "slot": slot_no,
+            "name": name[:48],
+            "routing": {
+                "routing_mode": mode,
+                "force_country": str(routing.get("force_country") or "").strip().upper(),
+                "routing_ip_type": ip_type,
+                "fav_fail_fallback": bool(routing.get("fav_fail_fallback", True)),
+                "favorite_node_ids": favourites,
+                "fixed_node_id": str(routing.get("fixed_node_id") or "").strip(),
+                "connection_enabled": bool(routing.get("connection_enabled", False)),
+            },
+            "last_node_id": str(item.get("last_node_id") or ""),
+            "created_at": float(item.get("created_at") or time.time()),
+        }
+
+    def load(self) -> None:
+        if self._loaded:
+            return
+        with self._load_lock:
+            if self._loaded:
+                return
+            raw = read_json(EXITS_FILE, None)
+            slots: list[dict[str, Any]] = []
+            stored_next = 1
+            if isinstance(raw, dict):
+                if isinstance(raw.get("slots"), list):
+                    slots = [item for item in raw["slots"] if isinstance(item, dict)]
+                stored_next = parse_int(raw.get("nextSlot")) or 1
+            migrated = not slots
+            if migrated:
+                slots = [self._default_slot_from_legacy()]
+            normalized: list[dict[str, Any]] = []
+            used_numbers: set[int] = set()
+            used_ids: set[str] = set()
+            for item in slots:
+                slot_no = parse_int(item.get("slot"))
+                if slot_no <= 0 or slot_no in used_numbers:
+                    slot_no = (max(used_numbers) + 1) if used_numbers else 1
+                normalized_slot = self._normalize_slot(item, slot_no)
+                if normalized_slot["id"] in used_ids:
+                    normalized_slot["id"] = f"exit-{slot_no}"
+                used_numbers.add(normalized_slot["slot"])
+                used_ids.add(normalized_slot["id"])
+                normalized.append(normalized_slot)
+            if not any(item["id"] == EXIT_DEFAULT_ID for item in normalized):
+                default_no = 1
+                while default_no in used_numbers:
+                    default_no += 1
+                default_slot = self._normalize_slot(self._default_slot_from_legacy(), default_no)
+                default_slot["id"] = EXIT_DEFAULT_ID
+                normalized.insert(0, default_slot)
+                used_numbers.add(default_no)
+            with self._state_lock:
+                self._slots = {item["id"]: item for item in normalized}
+                for slot_id, slot in self._slots.items():
+                    self._runtimes.setdefault(slot_id, ExitRuntime(slot["slot"]))
+                highest = max((slot["slot"] for slot in normalized), default=0)
+                self._next_slot = max(stored_next, highest + 1)
+                self._loaded = True
+            if migrated or not EXITS_FILE.exists():
+                self._write()
+            print(
+                f"[出口] 已加载 {len(self._slots)} 个出口槽位: "
+                + ", ".join(f"{s['id']}({s['name']}/{exit_resources(s['slot'])['dev']})" for s in self._ordered()),
+                flush=True,
+            )
+
+    # ---------------- accessors ----------------
+    def slots(self) -> list[dict[str, Any]]:
+        self.load()
+        with self._state_lock:
+            ordered = list(self._ordered())
+        return [{**slot, "routing": self._routing_view(slot)} for slot in ordered]
+
+    def slot(self, slot_id: str) -> dict[str, Any]:
+        self.load()
+        with self._state_lock:
+            slot = self._slots.get(str(slot_id or "").strip())
+            if slot is None:
+                raise ValueError(f"出口不存在: {slot_id}")
+            snapshot = dict(slot)
+        return {**snapshot, "routing": self._routing_view(snapshot)}
+
+    def runtime(self, slot_id: str) -> ExitRuntime:
+        self.load()
+        with self._state_lock:
+            runtime = self._runtimes.get(slot_id)
+            if runtime is None:
+                slot = self._slots.get(slot_id)
+                if slot is None:
+                    raise ValueError(f"出口不存在: {slot_id}")
+                runtime = ExitRuntime(slot["slot"])
+                self._runtimes[slot_id] = runtime
+            return runtime
+
+    def _connect_lock(self, slot_id: str) -> threading.Lock:
+        with self._state_lock:
+            lock_obj = self._connect_locks.get(slot_id)
+            if lock_obj is None:
+                lock_obj = threading.Lock()
+                self._connect_locks[slot_id] = lock_obj
+            return lock_obj
+
+    def active_count(self) -> int:
+        self.load()
+        with self._state_lock:
+            return sum(1 for runtime in self._runtimes.values() if runtime.running())
+
+    def nodes_in_use(self, exclude: str = "") -> dict[str, list[str]]:
+        """node id -> exit names currently running on it."""
+        self.load()
+        result: dict[str, list[str]] = {}
+        with self._state_lock:
+            for slot_id, runtime in self._runtimes.items():
+                if slot_id == exclude or not runtime.running() or not runtime.node_id:
+                    continue
+                slot = self._slots.get(slot_id)
+                label = slot["name"] if slot else slot_id
+                result.setdefault(runtime.node_id, []).append(label)
+        return result
+
+    def occupant(self, node_id: str, exclude: str = "") -> str:
+        names = self.nodes_in_use(exclude=exclude).get(str(node_id or ""), [])
+        return names[0] if names else ""
+
+    def _name(self, slot_id: str) -> str:
+        slot = self._slots.get(slot_id)
+        return slot["name"] if slot else slot_id
+
+    # ---------------- proxy listeners ----------------
+    def ensure_proxy(self, slot_id: str) -> None:
+        slot = self.slot(slot_id)
+        runtime = self.runtime(slot_id)
+        resources = exit_resources(slot["slot"])
+        with self._state_lock:
+            if runtime.proxy_started:
+                return
+            runtime.proxy_started = True
+        threading.Thread(
+            target=proxy_server.start_proxy_server,
+            args=(EXIT_PROXY_HOST, resources["proxyPort"], resources["dev"]),
+            daemon=True,
+            name=f"proxy-{slot_id}",
+        ).start()
+
+    def start(self) -> None:
+        """Boot: load slots and make every configured exit's proxy listen."""
+        self.load()
+        for slot in self.slots():
             try:
-                path = Path(config_to_delete)
-                if path.exists():
-                    path.unlink()
+                self.ensure_proxy(slot["id"])
+            except Exception as exc:
+                print(f"[出口] 启动 {slot['id']} 本地代理失败: {exc}", flush=True)
+
+    # ---------------- CRUD ----------------
+    def create(self, name: str = "") -> dict[str, Any]:
+        self.load()
+        with self._state_lock:
+            if len(self._slots) >= EXIT_MAX_SLOTS:
+                raise RuntimeError(f"出口数量已达上限（{EXIT_MAX_SLOTS} 个），请先删除不用的出口")
+            used_numbers = {slot["slot"] for slot in self._slots.values()}
+            slot_no = max(self._next_slot, (max(used_numbers) + 1) if used_numbers else 1)
+            while slot_no in used_numbers:
+                slot_no += 1
+            slot_id = f"exit-{slot_no}"
+            while slot_id in self._slots:
+                slot_no += 1
+                slot_id = f"exit-{slot_no}"
+            self._next_slot = slot_no + 1
+            slot = self._normalize_slot(
+                {
+                    "id": slot_id,
+                    "slot": slot_no,
+                    "name": str(name or "").strip() or f"出口 {slot_no}",
+                    "routing": {
+                        "routing_mode": "auto",
+                        "routing_ip_type": "all",
+                        "fav_fail_fallback": True,
+                        "connection_enabled": False,
+                    },
+                    "created_at": time.time(),
+                },
+                slot_no,
+            )
+            self._slots[slot_id] = slot
+            self._runtimes[slot_id] = ExitRuntime(slot_no)
+            self._write()
+        self.ensure_proxy(slot_id)
+        log_to_json("INFO", "VPN", f"已创建出口 [{slot['name']}]（{slot_id}，网卡 {exit_resources(slot_no)['dev']}）")
+        return self.status_for(slot_id)
+
+    def update(
+        self,
+        slot_id: str,
+        *,
+        name: str | None = None,
+        routing: dict[str, Any] | None = None,
+        persist: bool = True,
+    ) -> dict[str, Any]:
+        slot = self.slot(slot_id)
+        current = dict(slot["routing"])
+        merged: dict[str, Any] = {}
+        if routing:
+            mode = str(routing.get("routing_mode", current.get("routing_mode", "auto")) or "auto")
+            if mode not in EXIT_ROUTING_MODES:
+                raise ValueError("无效的选路模式")
+            ip_type = str(routing.get("routing_ip_type", current.get("routing_ip_type", "all")) or "all")
+            if ip_type not in EXIT_IP_TYPES:
+                raise ValueError("无效的 IP 类型过滤")
+            merged["routing_mode"] = mode
+            merged["routing_ip_type"] = ip_type
+            if "force_country" in routing:
+                merged["force_country"] = str(routing.get("force_country") or "").strip().upper()
+            if "fav_fail_fallback" in routing:
+                merged["fav_fail_fallback"] = bool(routing.get("fav_fail_fallback"))
+            if isinstance(routing.get("favorite_node_ids"), list):
+                merged["favorite_node_ids"] = [
+                    str(value) for value in routing["favorite_node_ids"] if str(value).strip()
+                ]
+            if "fixed_node_id" in routing:
+                merged["fixed_node_id"] = str(routing.get("fixed_node_id") or "").strip()
+            if "connection_enabled" in routing:
+                merged["connection_enabled"] = bool(routing.get("connection_enabled"))
+        if name is not None and str(name).strip():
+            with self._state_lock:
+                self._slots[slot_id]["name"] = str(name).strip()[:48]
+                if persist:
+                    self._write()
+        if merged and persist:
+            self._persist_routing(slot_id, merged)
+        return self.slot(slot_id)
+
+    def set_routing_from_cfg(self, slot_id: str, cfg: dict[str, Any]) -> dict[str, Any]:
+        """Copy the legacy ui_auth routing keys into a slot (backward compat)."""
+        return self.update(
+            slot_id,
+            routing={
+                "routing_mode": cfg.get("routing_mode"),
+                "force_country": cfg.get("force_country"),
+                "routing_ip_type": cfg.get("routing_ip_type"),
+                "fav_fail_fallback": cfg.get("fav_fail_fallback"),
+                "favorite_node_ids": cfg.get("favorite_node_ids"),
+                "fixed_node_id": cfg.get("fixed_node_id"),
+                "connection_enabled": cfg.get("connection_enabled"),
+            },
+        )
+
+    def delete(self, slot_id: str) -> dict[str, Any]:
+        slot_id = str(slot_id or "").strip()
+        slot = self.slot(slot_id)
+        if slot_id == EXIT_DEFAULT_ID or slot["slot"] == 1:
+            raise RuntimeError("默认出口（出口 1）不能删除：它承载原有的入站与 vpngate-out 出站")
+        self.disconnect(slot_id)
+        with self._state_lock:
+            self._slots.pop(slot_id, None)
+            self._runtimes.pop(slot_id, None)
+            self._write()
+        log_to_json("INFO", "VPN", f"已删除出口 [{slot['name']}]（{slot_id}）")
+        return {"deleted": slot_id, "name": slot["name"]}
+
+    # ---------------- connect / disconnect ----------------
+    def set_stage(self, slot_id: str, stage: str, detail: str = "") -> None:
+        runtime = self.runtime(slot_id)
+        runtime.stage = stage
+        runtime.stage_detail = detail
+        if slot_id == EXIT_DEFAULT_ID:
+            is_connecting_now = runtime.connecting
+            set_state(
+                active_node_latency=stage,
+                last_check_message=detail or stage,
+                is_connecting=is_connecting_now,
+            )
+
+    def _sync_legacy(self, slot_id: str) -> None:
+        """Mirror the default exit into the module-level single-exit globals."""
+        if slot_id != EXIT_DEFAULT_ID:
+            return
+        global active_openvpn_process, active_openvpn_node_id, is_connecting
+        runtime = self._runtimes.get(slot_id)
+        running = runtime is not None and runtime.running()
+        active_openvpn_process = runtime.process if running and runtime else None
+        active_openvpn_node_id = runtime.node_id if running and runtime else ""
+        is_connecting = bool(runtime and runtime.connecting)
+
+    def _stop_slot_process(self, slot_id: str, *, clear_table: bool = True) -> None:
+        runtime = self.runtime(slot_id)
+        slot = self.slot(slot_id)
+        resources = exit_resources(slot["slot"])
+        stop_process(runtime.process)
+        runtime.process = None
+        if clear_table:
+            cleanup_policy_routing(resources["table"])
+        self._sync_legacy(slot_id)
+
+    def _mark_node_unavailable(self, node_id: str, message: str, blacklist: bool = False) -> None:
+        if not node_id:
+            return
+        with lock:
+            nodes = read_nodes()
+            node = next((item for item in nodes if item.get("id") == node_id), None)
+            if node is None:
+                return
+            node["probe_status"] = "unavailable"
+            node["probe_message"] = message
+            if blacklist:
+                try:
+                    mark_blacklisted(node, message)
+                except Exception:
+                    pass
+            write_json(NODES_FILE, nodes)
+
+    def _apply_health(self, runtime: ExitRuntime, health: dict[str, Any]) -> None:
+        runtime.proxy_ok = bool(health.get("ok"))
+        runtime.health_failures = 0 if health.get("ok") else runtime.health_failures + 1
+        if health.get("ok"):
+            runtime.proxy_ip = str(health.get("ip") or "")
+            runtime.proxy_latency_ms = parse_int(health.get("latency_ms"))
+            runtime.proxy_error = ""
+        else:
+            runtime.proxy_ip = ""
+            runtime.proxy_latency_ms = 0
+            runtime.proxy_error = str(health.get("error") or "未知错误")
+        if runtime.slot == 1:
+            set_state(
+                proxy_ok=runtime.proxy_ok,
+                proxy_ip=runtime.proxy_ip or "-",
+                proxy_latency_ms=runtime.proxy_latency_ms,
+                proxy_error=runtime.proxy_error,
+            )
+
+    def _refresh_node_flags(self) -> None:
+        in_use = self.nodes_in_use()
+        with lock:
+            nodes = read_nodes()
+            changed = False
+            for item in nodes:
+                node_id = item.get("id")
+                want_active = node_id in in_use
+                if bool(item.get("active")) != want_active:
+                    item["active"] = want_active
+                    changed = True
+                label = in_use.get(node_id, [])
+                if label:
+                    item["active_exit"] = label[0]
+                    item["probe_message"] = f"Active on {label[0]}. Local proxy: http://{EXIT_PROXY_HOST}:{exit_resources(self._slot_number_of(label[0]))['proxyPort']}"
+                elif item.get("active_exit"):
+                    item.pop("active_exit", None)
+                    changed = True
+            if changed:
+                write_json(NODES_FILE, nodes)
+
+    def _slot_number_of(self, name_or_id: str) -> int:
+        with self._state_lock:
+            for slot in self._slots.values():
+                if slot["name"] == name_or_id or slot["id"] == name_or_id:
+                    return slot["slot"]
+        return 1
+
+    def connect(self, slot_id: str, node_id: str) -> str:
+        self.load()
+        slot_id = str(slot_id or EXIT_DEFAULT_ID).strip()
+        slot = self.slot(slot_id)
+        node_id = str(node_id or "").strip()
+        if not node_id:
+            raise ValueError("Node id is required")
+        connection_lock = self._connect_lock(slot_id)
+        if not connection_lock.acquire(blocking=False):
+            raise RuntimeError(f"出口「{slot['name']}」正在建立连接，请稍后再试")
+        runtime = self.runtime(slot_id)
+        resources = exit_resources(slot["slot"])
+        started = False
+        try:
+            nodes = read_nodes()
+            node = next((item for item in nodes if item.get("id") == node_id), None)
+            if node is None:
+                raise ValueError(f"Node not found: {node_id}")
+            occupant = self.occupant(node_id, exclude=slot_id)
+            if occupant:
+                raise RuntimeError(
+                    f"节点 {node_id} 已被「{occupant}」占用；一个节点同一时间只能给一个出口使用，请换一个节点"
+                )
+            if not runtime.running():
+                budget = memory_budget(self.active_count(), len(self._slots))
+                if not budget["canStartNew"]:
+                    raise RuntimeError(
+                        f"内存不足，无法再启动第 {self.active_count() + 1} 条隧道："
+                        f"当前可用 {budget['availableMb']} MB，需给系统保留 {budget['reserveMb']} MB，"
+                        f"单条隧道约 {budget['perTunnelMb']} MB（{budget['activeExits']} 条出口已在运行）。"
+                        "已配置的出口不会被断开；请先手动断开不用的出口，或给 VPS 扩容后再试。"
+                    )
+            runtime.connecting = True
+            runtime.last_error = ""
+            runtime.health_failures = 0
+            self._sync_legacy(slot_id)
+            self.set_stage(slot_id, "cleanup", f"正在关闭「{slot['name']}」的旧连接并清理网卡 {resources['dev']}...")
+            self._stop_slot_process(slot_id, clear_table=True)
+
+            self.set_stage(slot_id, "write", "正在写入 OpenVPN 节点配置文件...")
+            config_path = Path(node.get("config_file") or (CONFIG_DIR / f"{safe_name(node_id)}.ovpn"))
+            try:
+                CONFIG_DIR.mkdir(exist_ok=True, parents=True)
+                config_path.write_text(node.get("config_text") or "", encoding="utf-8")
+            except Exception as exc:
+                raise RuntimeError(f"写入出口配置失败: {exc}")
+
+            self.set_stage(slot_id, "start", f"正在通过网卡 {resources['dev']} 建立 OpenVPN 隧道...")
+            ok, message, process = run_openvpn_until_ready(
+                str(config_path),
+                keep_alive=True,
+                route_nopull=True,
+                dev=resources["dev"],
+                slot_id=slot_id,
+            )
+            if not ok or process is None:
+                self._mark_node_unavailable(node_id, message)
+                runtime.last_error = message
+                runtime.stage = "idle"
+                self._sync_legacy(slot_id)
+                log_to_json("ERROR", "VPN", f"[{slot['name']}] 连接节点 {node_id} 失败: {message}")
+                raise RuntimeError(message)
+            started = True
+            runtime.process = process
+            runtime.node_id = node_id
+            runtime.connected_at = time.time()
+            self._sync_legacy(slot_id)
+
+            self.set_stage(slot_id, "route", f"正在配置策略路由（table {resources['table']} / {resources['dev']}）...")
+            setup_policy_routing(resources["dev"], resources["table"])
+
+            latency = 0
+            try:
+                ip = node.get("ip") or node.get("remote_host")
+                latency = vpn_utils.ping_latency_ms(ip, parse_int(node.get("remote_port")), parse_int(node.get("ping")))
             except Exception:
-                pass
+                latency = 0
+            runtime.latency_ms = max(0, latency)
+            runtime.last_ping = time.time()
+
+            self.set_stage(slot_id, "probe", f"正在测试出口 {resources['proxyPort']} 的连通性与出口 IP...")
+            health = check_proxy_health(port=resources["proxyPort"], dev=resources["dev"])
+            self._apply_health(runtime, health)
+
+            update: dict[str, Any] = {"connection_enabled": True}
+            if slot["routing"].get("routing_mode") == "fixed_ip":
+                update["fixed_node_id"] = node_id
+            self._persist_routing(slot_id, update)
+            with self._state_lock:
+                self._slots[slot_id]["last_node_id"] = node_id
+                self._write()
+            self._refresh_node_flags()
+
+            self.set_stage(slot_id, "connected", f"{slot['name']} 已连接 {node_id}")
+            self._sync_legacy(slot_id)
+            log_to_json(
+                "INFO",
+                "VPN",
+                f"[{slot['name']}] 节点 {node_id} 连接成功，网卡 {resources['dev']} / 路由表 {resources['table']}",
+            )
+            return f"Connected {node_id}"
+        except Exception as exc:
+            runtime.connecting = False
+            if not started:
+                runtime.process = None
+                runtime.node_id = ""
+            self._sync_legacy(slot_id)
+            self._refresh_node_flags()
+            raise
+        finally:
+            runtime.connecting = False
+            self._sync_legacy(slot_id)
+            connection_lock.release()
+
+    def disconnect(self, slot_id: str, *, disable_auto: bool = True) -> dict[str, Any]:
+        self.load()
+        slot_id = str(slot_id or EXIT_DEFAULT_ID).strip()
+        slot = self.slot(slot_id)
+        runtime = self.runtime(slot_id)
+        self._stop_slot_process(slot_id, clear_table=True)
+        runtime.node_id = ""
+        runtime.connected_at = 0.0
+        runtime.latency_ms = 0
+        runtime.stage = "idle"
+        runtime.stage_detail = "已手动断开"
+        runtime.proxy_ok = None
+        runtime.proxy_ip = ""
+        runtime.proxy_latency_ms = 0
+        runtime.proxy_error = ""
+        if disable_auto:
+            self._persist_routing(slot_id, {"connection_enabled": False})
+        self._refresh_node_flags()
+        if slot_id == EXIT_DEFAULT_ID:
+            set_state(last_check_message="手动断开连接", active_node_latency="无活动连接")
+        log_to_json("INFO", "VPN", f"出口 [{slot['name']}] 已断开")
+        return {"ok": True, "exit": slot_id}
+
+    # ---------------- policy ----------------
+    def auto_pick_node(self, slot_id: str, exclude_id: str = "") -> str:
+        slot = self.slot(slot_id)
+        cfg = dict(slot["routing"])
+        in_use = set(self.nodes_in_use(exclude=slot_id).keys())
+        nodes = read_nodes()
+        if cfg.get("routing_mode") == "fixed_ip":
+            target = cfg.get("fixed_node_id") or slot.get("last_node_id") or ""
+            return target if target and target not in in_use else ""
+        candidates = [
+            node
+            for node in select_routing_candidates(nodes, cfg, exclude_id=exclude_id)
+            if node.get("id") not in in_use
+        ]
+        return str(candidates[0]["id"]) if candidates else ""
+
+    def issue_policy(self, slot_id: str) -> str:
+        slot = self.slot(slot_id)
+        cfg = dict(slot["routing"])
+        if not cfg.get("connection_enabled", True):
+            return ""
+        if cfg.get("routing_mode") == "fixed_ip":
+            return str(cfg.get("fixed_node_id") or "")
+        return ""
+
+    def schedule_connect(self, slot_id: str, node_id: str, reason: str) -> None:
+        slot = self.slot(slot_id)
+
+        def worker() -> None:
+            time.sleep(0.5)
+            try:
+                if node_id:
+                    log_to_json("INFO", "VPN", f"[{slot['name']}] {reason}，正在连接 {node_id}")
+                    self.connect(slot_id, node_id)
+                else:
+                    self.reconnect_by_policy(slot_id, reason)
+            except Exception as exc:
+                message = f"[{slot['name']}] {reason}，但连接失败: {exc}"
+                print(f"[出口策略] {message}", flush=True)
+                log_to_json("WARNING", "VPN", message)
+
+        threading.Thread(target=worker, daemon=True, name=f"exit-policy-{slot_id}").start()
+
+    def reconnect_by_policy(self, slot_id: str, reason: str) -> None:
+        node_id = self.auto_pick_node(slot_id, exclude_id=self.runtime(slot_id).node_id)
+        if not node_id:
+            message = f"[{self._name(slot_id)}] {reason}，但当前节点池没有符合策略的可用节点，暂时保留现状"
+            print(f"[出口策略] {message}", flush=True)
+            log_to_json("WARNING", "VPN", message)
+            return
+        self.connect(slot_id, node_id)
+
+    def apply_policy(self, slot_id: str) -> dict[str, Any]:
+        """Re-evaluate one exit against its just-saved routing policy."""
+        slot = self.slot(slot_id)
+        runtime = self.runtime(slot_id)
+        cfg = dict(slot["routing"])
+        mode = str(cfg.get("routing_mode") or "auto")
+        ip_type = str(cfg.get("routing_ip_type") or "all")
+        policy = routing_policy_label(cfg)
+        label = slot["name"]
+        base: dict[str, Any] = {
+            "exit": slot_id,
+            "exitName": label,
+            "policy": policy,
+            "mode": mode,
+            "country": str(cfg.get("force_country") or "").strip().upper(),
+            "ip_type": ip_type,
+            "node": "",
+            "node_ip_type": "",
+            "candidates": 0,
+        }
+        if mode == "fixed_ip":
+            return {
+                **base,
+                "code": "saved_fixed_ip",
+                "level": "success",
+                "message": f"「{label}」路由已保存。固定节点模式由你指定的节点决定，不受国家与 IP 类型筛选影响。",
+            }
+        if not cfg.get("connection_enabled", True):
+            return {
+                **base,
+                "code": "saved_disabled",
+                "level": "info",
+                "message": f"「{label}」路由已保存（{policy or '不限条件'}）。该出口当前未启用自动连接，面板不会主动重连。",
+            }
+        nodes = read_nodes()
+        active = None
+        if runtime.running() and runtime.node_id:
+            active = next((item for item in nodes if item.get("id") == runtime.node_id), None)
+        if active is not None and node_matches_routing_policy(active, cfg):
+            return {
+                **base,
+                "code": "saved_policy_match",
+                "level": "success",
+                "node": active.get("id", ""),
+                "node_ip_type": normalize_ip_type(active.get("ip_type")),
+                "message": (
+                    f"「{label}」路由已保存（{policy or '不限条件'}）。当前节点 {active.get('id')}"
+                    f"（{node_ip_type_label(active)}）符合新策略，无需切换。"
+                ),
+            }
+        in_use = set(self.nodes_in_use(exclude=slot_id).keys())
+        candidates = [
+            node
+            for node in select_routing_candidates(
+                nodes, cfg, exclude_id=active.get("id", "") if active else ""
+            )
+            if node.get("id") not in in_use
+        ]
+        base["candidates"] = len(candidates)
+        best = candidates[0] if candidates else None
+        if best:
+            base["node"] = str(best.get("id") or "")
+            base["node_ip_type"] = normalize_ip_type(best.get("ip_type"))
+        if active is not None:
+            if best and (maintenance_lock.locked()):
+                return {
+                    **base,
+                    "code": "saved_pending_switch",
+                    "level": "info",
+                    "message": (
+                        f"「{label}」路由已保存（{policy}）。当前节点 {active.get('id')} 不符合新策略，"
+                        f"节点检测结束后会自动切换到 {best.get('id')}（{node_ip_type_label(best)}）。"
+                    ),
+                }
+            if best:
+                self.schedule_connect(
+                    slot_id,
+                    base["node"],
+                    f"路由策略已改为 {policy}，当前节点 {active.get('id')} 不再符合",
+                )
+                return {
+                    **base,
+                    "code": "saved_switching",
+                    "level": "info",
+                    "message": (
+                        f"「{label}」路由已保存（{policy}）。当前节点 {active.get('id')} 不符合新策略，"
+                        f"正在切换到 {best.get('id')}（{node_ip_type_label(best)}）。"
+                    ),
+                }
+            return {
+                **base,
+                "code": "saved_no_match_kept",
+                "level": "warning",
+                "node": str(active.get("id") or ""),
+                "node_ip_type": normalize_ip_type(active.get("ip_type")),
+                "message": (
+                    f"「{label}」路由已保存（{policy}），但当前节点池暂无符合该条件的可用节点；"
+                    f"暂时保留当前节点 {active.get('id')}（{node_ip_type_label(active)}）。"
+                ),
+            }
+        if best:
+            if maintenance_lock.locked():
+                return {
+                    **base,
+                    "code": "saved_pending_switch",
+                    "level": "info",
+                    "message": f"「{label}」路由已保存（{policy}）。节点检测正在进行，结束后会自动连接 {best.get('id')}。",
+                }
+            self.schedule_connect(slot_id, base["node"], f"路由策略已改为 {policy}")
+            return {
+                **base,
+                "code": "saved_connecting",
+                "level": "info",
+                "message": f"「{label}」路由已保存（{policy}），正在按新策略连接 {best.get('id')}（{node_ip_type_label(best)}）。",
+            }
+        return {
+            **base,
+            "code": "saved_no_match",
+            "level": "warning",
+            "message": f"「{label}」路由已保存（{policy}），但当前节点池暂无符合该条件的可用节点。",
+        }
+
+    def enforce_policies(self) -> None:
+        """Move running exits off nodes their saved policy no longer accepts."""
+        for slot in self.slots():
+            slot_id = slot["id"]
+            runtime = self._runtimes.get(slot_id)
+            if runtime is None or not runtime.running():
+                continue
+            cfg = dict(slot["routing"])
+            if not cfg.get("connection_enabled", True) or cfg.get("routing_mode") == "fixed_ip":
+                continue
+            nodes = read_nodes()
+            active = next((item for item in nodes if item.get("id") == runtime.node_id), None)
+            if active is None:
+                continue
+            if node_matches_routing_policy(active, cfg):
+                self._last_policy_warning.pop(slot_id, None)
+                continue
+            policy = routing_policy_label(cfg)
+            in_use = set(self.nodes_in_use(exclude=slot_id).keys())
+            candidates = [
+                node
+                for node in select_routing_candidates(nodes, cfg, exclude_id=active.get("id"))
+                if node.get("id") not in in_use
+            ]
+            if not candidates:
+                warning_key = f"{policy}|{active.get('id')}"
+                if self._last_policy_warning.get(slot_id) != warning_key:
+                    self._last_policy_warning[slot_id] = warning_key
+                    message = (
+                        f"[出口策略] 「{slot['name']}」当前节点 {active.get('id')}"
+                        f"（{node_ip_type_label(active)}）不符合策略 {policy}，但暂无符合条件的可用节点，暂时保留。"
+                    )
+                    print(message, flush=True)
+                    log_to_json("WARNING", "VPN", message)
+                continue
+            self._last_policy_warning.pop(slot_id, None)
+            self.schedule_connect(
+                slot_id,
+                str(candidates[0].get("id")),
+                f"当前节点不符合策略 {policy}",
+            )
+
+    # ---------------- background sweeps ----------------
+    def health_sweep(self) -> None:
+        for slot in self.slots():
+            slot_id = slot["id"]
+            runtime = self._runtimes.get(slot_id)
+            if runtime is None or not runtime.running() or runtime.connecting:
+                continue
+            resources = exit_resources(slot["slot"])
+            health = check_proxy_health(port=resources["proxyPort"], dev=resources["dev"])
+            self._apply_health(runtime, health)
+            if health.get("ok"):
+                continue
+            error_text = str(health.get("error") or "未知错误")
+            if runtime.health_failures < 2:
+                # Free VPNGate nodes are often just slow to answer; reconnecting
+                # on the first miss threw away working tunnels every 30 s.
+                message = f"[出口] 「{slot['name']}」首次探测失败（{error_text}），下个周期复查"
+                print(message, flush=True)
+                continue
+            message = f"[出口] 「{slot['name']}」连续 {runtime.health_failures} 次探测失败: {error_text}"
+            print(message, flush=True)
+            log_to_json("WARNING", "VPN", message)
+            cfg = dict(slot["routing"])
+            if not cfg.get("connection_enabled", True):
+                continue
+            self._mark_node_unavailable(runtime.node_id, f"代理连通性检测失败: {error_text}", blacklist=True)
+            reason = "代理连通性检测失败"
+            if cfg.get("routing_mode") == "fixed_ip":
+                target = runtime.node_id or cfg.get("fixed_node_id", "")
+            else:
+                target = ""
+            self.schedule_connect(slot_id, target, reason)
+
+    def ping_sweep(self) -> None:
+        any_running = False
+        for slot in self.slots():
+            slot_id = slot["id"]
+            runtime = self._runtimes.get(slot_id)
+            if runtime is None:
+                continue
+            if runtime.running() and runtime.node_id:
+                any_running = True
+                now = time.time()
+                if now - runtime.last_ping < 10.0:
+                    continue
+                runtime.last_ping = now
+                nodes = read_nodes()
+                node = next((item for item in nodes if item.get("id") == runtime.node_id), None)
+                if node is None:
+                    continue
+                ip = node.get("ip") or node.get("remote_host")
+                latency = 0
+                try:
+                    latency = vpn_utils.ping_latency_ms(
+                        ip, parse_int(node.get("remote_port")), parse_int(node.get("ping"))
+                    )
+                except Exception:
+                    latency = 0
+                runtime.latency_ms = max(0, latency)
+                if slot_id == EXIT_DEFAULT_ID:
+                    stage = f"{runtime.latency_ms} ms" if runtime.latency_ms > 0 else "检测超时"
+                    set_state(active_node_latency=stage)
+        default_runtime = self._runtimes.get(EXIT_DEFAULT_ID)
+        if not any_running and not (default_runtime and default_runtime.connecting):
+            if not (default_runtime and default_runtime.proxy_ok):
+                set_state(active_node_latency="无活动连接")
+
+    def maintenance_after_cycle(self) -> None:
+        """Recover exits whose tunnel died; keep the default one to the legacy path."""
+        for slot in self.slots():
+            slot_id = slot["id"]
+            if slot_id == EXIT_DEFAULT_ID:
+                continue
+            runtime = self._runtimes.get(slot_id)
+            if runtime is None or runtime.connecting or runtime.running():
+                continue
+            cfg = dict(slot["routing"])
+            if not cfg.get("connection_enabled", True):
+                continue
+            target = self.auto_pick_node(slot_id)
+            if not target:
+                continue
+            self.schedule_connect(slot_id, target, "检测到该出口的隧道已退出，正在恢复")
+
+    # ---------------- reporting ----------------
+    def status_for(self, slot_id: str) -> dict[str, Any]:
+        slot = self.slot(slot_id)
+        runtime = self.runtime(slot_id)
+        resources = exit_resources(slot["slot"])
+        node: dict[str, Any] = {}
+        nodes = read_nodes()
+        node_id = runtime.node_id or ""
+        if node_id:
+            found = next((item for item in nodes if item.get("id") == node_id), None)
+            if found:
+                node = {
+                    "id": found.get("id"),
+                    "country": found.get("country"),
+                    "country_short": found.get("country_short"),
+                    "ip": found.get("ip"),
+                    "host_name": found.get("host_name"),
+                    "ip_type": found.get("ip_type"),
+                    "latency_ms": found.get("latency_ms") or found.get("ping") or 0,
+                }
+        return {
+            "id": slot["id"],
+            "slot": slot["slot"],
+            "name": slot["name"],
+            "dev": resources["dev"],
+            "table": resources["table"],
+            "proxyPort": resources["proxyPort"],
+            "proxyAddress": f"{EXIT_PROXY_HOST}:{resources['proxyPort']}",
+            "socksUrl": f"socks5://{EXIT_PROXY_HOST}:{resources['proxyPort']}",
+            "outboundTag": "vpngate-out" if slot["slot"] == 1 else f"vpngate-out-{slot['slot']}",
+            "routing": dict(slot["routing"]),
+            "routingLabel": routing_policy_label(slot["routing"]),
+            "nodeId": node_id,
+            "node": node,
+            "running": runtime.running(),
+            "connecting": runtime.connecting,
+            "stage": runtime.stage,
+            "stageDetail": runtime.stage_detail,
+            "lastError": runtime.last_error,
+            "latencyMs": runtime.latency_ms,
+            "proxyOk": runtime.proxy_ok,
+            "proxyIp": runtime.proxy_ip,
+            "proxyLatencyMs": runtime.proxy_latency_ms,
+            "proxyError": runtime.proxy_error,
+            "connectedAt": runtime.connected_at,
+            "createdAt": slot["created_at"],
+            "isDefault": slot["id"] == EXIT_DEFAULT_ID or slot["slot"] == 1,
+        }
+
+    def summary(self) -> list[dict[str, Any]]:
+        return [self.status_for(slot["id"]) for slot in self.slots()]
+
+    def memory(self) -> dict[str, Any]:
+        return memory_budget(self.active_count(), len(self.slots()))
+
+    def state(self) -> dict[str, Any]:
+        return {"exits": self.summary(), "memory": self.memory()}
+
+
+exit_manager = ExitManager()
+
+
+def stop_active_openvpn() -> None:
+    """Stop the default exit's tunnel. Legacy single-exit entry point.
+
+    Only exit 1 is touched: the other exits keep their tunnels, and the node
+    config files stay on disk because another exit may point at the same pool.
+    """
+    try:
+        exit_manager.disconnect(EXIT_DEFAULT_ID, disable_auto=False)
+    except Exception as exc:
+        print(f"[出口] 停止默认出口失败: {exc}", flush=True)
 
 def active_openvpn_running() -> bool:
-    return active_openvpn_process is not None and active_openvpn_process.poll() is None
+    return exit_manager.runtime(EXIT_DEFAULT_ID).running()
 
 IP_TYPE_LABELS = {
     "residential": "住宅 IP",
@@ -1819,183 +2997,12 @@ def apply_routing_policy(ui_cfg: dict[str, Any]) -> dict[str, Any]:
     }
 
 def enforce_routing_policy_after_cycle() -> None:
-    """Put the live connection back on a node the saved policy accepts.
-
-    Runs after every detection cycle so a policy saved while no matching node
-    existed is honoured as soon as one shows up. A missing replacement keeps
-    the current node (and says so once): dropping the tunnel would leave the
-    operator with neither the old exit nor a new one.
-    """
-    global is_connecting, _last_policy_warning
-    ui_cfg = load_ui_config()
-    if not ui_cfg.get("connection_enabled", True):
-        return
-    if str(ui_cfg.get("routing_mode") or "auto") == "fixed_ip":
-        return
-    if not (active_openvpn_node_id and active_openvpn_running()):
-        return
-
-    nodes = read_nodes()
-    active = next((n for n in nodes if n.get("id") == active_openvpn_node_id), None)
-    if not active or node_matches_routing_policy(active, ui_cfg):
-        _last_policy_warning = ""
-        return
-
-    policy = routing_policy_label(ui_cfg)
-    candidates = select_routing_candidates(nodes, ui_cfg, exclude_id=active.get("id"))
-    if not candidates:
-        warning_key = f"{policy}|{active.get('id')}"
-        if warning_key != _last_policy_warning:
-            _last_policy_warning = warning_key
-            msg = (
-                f"[路由策略] 当前节点 {active.get('id')}（{node_ip_type_label(active)}）不符合策略 {policy}，"
-                "但暂无符合条件的可用节点，暂时保留当前连接。"
-            )
-            print(f"{msg}", flush=True)
-            log_to_json("WARNING", "VPN", msg)
-        return
-
-    _last_policy_warning = ""
-    next_node = candidates[0]
-    msg = (
-        f"[路由策略] 当前节点不符合策略 {policy}，自动切换至 {next_node.get('id')}"
-        f"（{node_ip_type_label(next_node)}）"
-    )
-    print(f"{msg}", flush=True)
-    log_to_json("INFO", "VPN", msg)
-    is_connecting = False
-    try:
-        connect_node(next_node["id"])
-    except Exception as exc:
-        err = f"[路由策略] 按策略切换 {next_node.get('id')} 失败: {exc}"
-        print(f"{err}", flush=True)
-        log_to_json("WARNING", "VPN", err)
-    finally:
-        is_connecting = True
+    """Move every running exit back onto a node its saved policy accepts."""
+    exit_manager.enforce_policies()
 
 def connect_node(node_id: str) -> str:
-    global active_openvpn_process, active_openvpn_node_id, is_connecting
-
-    node_id = str(node_id or "").strip()
-
-    if not node_id:
-        raise ValueError("Node id is required")
-    stopped_existing = False
-    with lock:
-        if is_connecting:
-            print("[连接] 正在建立其他连接中，跳过此请求", flush=True)
-            raise RuntimeError("当前已有连接或节点检测任务正在运行，请稍后再试")
-        is_connecting = True
-        set_state(is_connecting=True, active_node_latency="正在连接", last_check_message=f"正在初始化连接配置: {node_id}")
-        
-    try:
-        log_to_json("INFO", "VPN", f"开始连接节点: {node_id}")
-
-        nodes = read_nodes()
-        node = next((item for item in nodes if item.get("id") == node_id), None)
-        if not node:
-            raise ValueError(f"Node not found: {node_id}")
-        
-        ui_cfg = load_ui_config()
-        ui_cfg["connection_enabled"] = True
-        if ui_cfg.get("routing_mode") == "fixed_ip":
-            ui_cfg["fixed_node_id"] = node_id
-        auth_file = DATA_DIR / "ui_auth.json"
-        with lock:
-            DATA_DIR.mkdir(exist_ok=True, parents=True)
-            auth_file.write_text(json.dumps(ui_cfg, ensure_ascii=False, indent=2), encoding="utf-8")
-        
-        set_state(active_node_latency="清理连接", last_check_message="正在关闭与清理旧的 VPN 连接及网卡...")
-        stop_active_openvpn()
-        stopped_existing = True
-
-        set_state(active_node_latency="写入配置", last_check_message="正在写入 OpenVPN 节点配置文件...")
-        config_path = Path(node["config_file"])
-        try:
-            CONFIG_DIR.mkdir(exist_ok=True, parents=True)
-            config_path.write_text(node.get("config_text") or "", encoding="utf-8")
-        except Exception as e:
-            raise RuntimeError(f"Failed to write configuration: {e}")
-
-        set_state(active_node_latency="启动核心", last_check_message="正在启动 OpenVPN Core 核心服务并建立连接...")
-        ok, message, process = run_openvpn_until_ready(str(node["config_file"]), keep_alive=True, route_nopull=True)
-        if not ok or process is None:
-            try:
-                if config_path.exists():
-                    config_path.unlink()
-            except Exception:
-                pass
-            node["probe_status"] = "unavailable"
-            node["probe_message"] = message
-            for item in nodes:
-                item["active"] = False
-            write_json(NODES_FILE, nodes)
-            log_to_json("ERROR", "VPN", f"连接节点 {node_id} 失败: {message}")
-            print(f"[连接核心失败] 无法与 VPN 节点 {node_id} 建立隧道连接！详情: {message}", flush=True)
-            set_state(active_openvpn_node_id="", is_connecting=False, active_node_latency="无活动连接", last_check_message=f"连接失败: {message}")
-            with lock:
-                active_openvpn_node_id = ""
-            raise RuntimeError(message)
-            
-        with lock:
-            active_openvpn_process = process
-            active_openvpn_node_id = node_id
-        
-        set_state(active_node_latency="配置路由", last_check_message="正在配置策略路由规则与流量转发...")
-        setup_policy_routing(OPENVPN_DEV)
-        
-        global last_active_ping_time, last_active_latency
-        last_active_ping_time = time.time()
-        last_active_latency = 0
-        
-        set_state(active_node_latency="测试延迟", last_check_message="正在直连测试代理出口延迟与可用性...")
-        try:
-            ip = node.get("ip") or node.get("remote_host")
-            port = parse_int(node.get("remote_port"))
-            fallback = parse_int(node.get("ping"))
-            latency = vpn_utils.ping_latency_ms(ip, port, fallback)
-            if latency > 0:
-                last_active_latency = latency
-        except Exception:
-            pass
-            
-        for item in nodes:
-            item["active"] = item.get("id") == node_id
-            if item["active"]:
-                _ph = f"[{LOCAL_PROXY_HOST}]" if ":" in LOCAL_PROXY_HOST else LOCAL_PROXY_HOST
-                item["probe_message"] = f"Active node. HTTP proxy: http://{_ph}:{LOCAL_PROXY_PORT}"
-        write_json(NODES_FILE, nodes)
-        
-        set_state(last_check_message="正在测试本地代理出站联通性与出口 IP...")
-        res = check_proxy_health()
-        if res["ok"]:
-            set_state(
-                proxy_ok=True,
-                proxy_ip=res["ip"],
-                proxy_latency_ms=res["latency_ms"],
-                proxy_error=""
-            )
-        else:
-            set_state(
-                proxy_ok=False,
-                proxy_ip="-",
-                proxy_latency_ms=0,
-                proxy_error=res.get("error", "未知错误")
-            )
-            
-        latency_str = f"{last_active_latency} ms" if last_active_latency > 0 else "检测超时"
-        set_state(active_openvpn_node_id=node_id, is_connecting=False, last_check_message=f"Connected {node_id}", active_node_latency=latency_str)
-        log_to_json("INFO", "VPN", f"节点 {node_id} 连接成功，出口网卡 {OPENVPN_DEV} 已启用")
-        return f"Connected {node_id}"
-    except Exception as exc:
-        if stopped_existing or (active_openvpn_node_id == node_id and not active_openvpn_running()):
-            clear_active_connection_state(f"连接失败: {exc}")
-        else:
-            set_state(is_connecting=False, last_check_message=f"连接失败: {exc}")
-        raise
-    finally:
-        with lock:
-            is_connecting = False
+    """Connect the default exit (exit 1) to one node. Legacy entry point."""
+    return exit_manager.connect(EXIT_DEFAULT_ID, node_id)
 
 def maintain_valid_nodes(force: bool = False) -> str:
     global active_openvpn_process, active_openvpn_node_id, is_connecting
@@ -2126,15 +3133,15 @@ def maintain_valid_nodes(force: bool = False) -> str:
                         if available_candidates:
                             auto_switch_node()
 
-        # A running connection that no longer fits the saved policy (the operator
-        # applied a new country or IP type while it was up) is moved onto a
-        # matching node as soon as one exists. Outside the lock: connecting runs
-        # OpenVPN and must not block the node endpoint.
-        if active_openvpn_running():
-            try:
-                enforce_routing_policy_after_cycle()
-            except Exception as policy_exc:
-                print(f"[路由策略] 周期校验失败: {policy_exc}", flush=True)
+        # Every exit is checked: one whose running node no longer fits its saved
+        # policy moves onto a matching node, and one whose tunnel died is
+        # recovered. Outside the lock: connecting runs OpenVPN and must not block
+        # the node endpoint.
+        try:
+            exit_manager.enforce_policies()
+            exit_manager.maintenance_after_cycle()
+        except Exception as policy_exc:
+            print(f"[路由策略] 周期校验失败: {policy_exc}", flush=True)
 
         valid_nodes_count = len([n for n in merged if n.get("probe_status") == "available"])
         message = f"Fetched {len(candidates)} nodes. Tested {len(to_test_ids)} non-active nodes."
@@ -6066,7 +7073,14 @@ function toggleTheme() {
 </script>
 </body></html>"""
 
-def check_proxy_health() -> dict[str, Any]:
+def check_proxy_health(port: int | None = None, dev: str | None = None) -> dict[str, Any]:
+    """Probe one exit's local proxy and the actual exit IP through it.
+
+    Multi-exit calls this per slot with that slot's proxy port and device, so
+    "exit 2 is healthy" never means "some tunnel on this host answers".
+    """
+    proxy_port = int(port) if port else LOCAL_PROXY_PORT
+    tunnel_dev = dev or OPENVPN_DEV
     # 1. 检测代理服务端口是否在监听
     is_ipv6 = ":" in LOCAL_PROXY_HOST
     af = socket.AF_INET6 if is_ipv6 else socket.AF_INET
@@ -6078,18 +7092,18 @@ def check_proxy_health() -> dict[str, Any]:
         if connect_host in ("::", "0.0.0.0", ""):
             connect_host = "::1" if is_ipv6 else "127.0.0.1"
         try:
-            s.connect((connect_host, LOCAL_PROXY_PORT))
+            s.connect((connect_host, proxy_port))
         except Exception as e:
             if connect_host == "::1":
                 s.close()
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.settimeout(1.5)
-                s.connect(("127.0.0.1", LOCAL_PROXY_PORT))
+                s.connect(("127.0.0.1", proxy_port))
             else:
                 raise e
     except Exception as e:
-        diag = vpn_utils.diagnose_local_obstructions(LOCAL_PROXY_PORT, host=LOCAL_PROXY_HOST)
-        diag_msg = diag[1] if diag else f"端口 {LOCAL_PROXY_PORT} 连接失败，原因: {e}"
+        diag = vpn_utils.diagnose_local_obstructions(proxy_port, host=LOCAL_PROXY_HOST)
+        diag_msg = diag[1] if diag else f"端口 {proxy_port} 连接失败，原因: {e}"
         return {
             "ok": False,
             "error": f"代理服务未运行 ({diag_msg})"
@@ -6102,11 +7116,11 @@ def check_proxy_health() -> dict[str, Any]:
                 pass
 
     # 2. 检测虚拟网卡是否存在 (Linux 下)
-    tun_path = Path(f"/sys/class/net/{OPENVPN_DEV}")
+    tun_path = Path(f"/sys/class/net/{tunnel_dev}")
     if sys.platform.startswith("linux") and not tun_path.exists():
         return {
             "ok": False,
-            "error": f"[错误代码 3004] [ERR_ROUTE_DEV_NOT_FOUND] VPN 虚拟网卡 ({OPENVPN_DEV}) 未启用，请确保当前已成功连接 VPN 节点"
+            "error": f"[错误代码 3004] [ERR_ROUTE_DEV_NOT_FOUND] VPN 虚拟网卡 ({tunnel_dev}) 未启用，请确保当前已成功连接 VPN 节点"
         }
 
     # 3. 使用 curl 通过本地 SOCKS5 代理接口测试 IP 与实际延迟
@@ -6122,7 +7136,7 @@ def check_proxy_health() -> dict[str, Any]:
             proxy_hosts = [LOCAL_PROXY_HOST]
 
         for p_host in proxy_hosts:
-            proxy_url = f"socks5h://{p_host}:{LOCAL_PROXY_PORT}"
+            proxy_url = f"socks5h://{p_host}:{proxy_port}"
             proxy_user, proxy_pass = proxy_server.get_proxy_credentials()
             cmd = [
                 "curl", "-s",
@@ -6167,14 +7181,14 @@ def check_proxy_health() -> dict[str, Any]:
             if connect_host in ("::", "0.0.0.0", ""):
                 connect_host = "::1" if is_ipv6 else "127.0.0.1"
             try:
-                test_sock.connect((connect_host, LOCAL_PROXY_PORT))
+                test_sock.connect((connect_host, proxy_port))
                 port_still_listening = True
             except Exception:
                 if connect_host == "::1":
                     test_sock.close()
                     test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     test_sock.settimeout(1.0)
-                    test_sock.connect(("127.0.0.1", LOCAL_PROXY_PORT))
+                    test_sock.connect(("127.0.0.1", proxy_port))
                     port_still_listening = True
         except Exception:
             pass
@@ -6186,7 +7200,7 @@ def check_proxy_health() -> dict[str, Any]:
                     pass
 
         if not port_still_listening:
-            diag = vpn_utils.diagnose_local_obstructions(LOCAL_PROXY_PORT, host=LOCAL_PROXY_HOST)
+            diag = vpn_utils.diagnose_local_obstructions(proxy_port, host=LOCAL_PROXY_HOST)
             if diag:
                 return {"ok": False, "error": f"出口连接测试失败 | 本机诊断结果: {diag[1]}"}
             
@@ -6195,59 +7209,20 @@ def check_proxy_health() -> dict[str, Any]:
         return {"ok": False, "error": f"出口连接测试异常: {e}"}
 
 def background_proxy_checker() -> None:
-    global last_checker_heartbeat, is_connecting
+    """Health sweep for every running exit, once every 30 seconds.
+
+    Each exit is probed through its own proxy port and device, so a failure is
+    attributed to the exit that broke instead of to "the tunnel".
+    """
+    global last_checker_heartbeat
     time.sleep(30)
     while True:
         last_checker_heartbeat = time.time()
         try:
-            if is_connecting:
-                time.sleep(5)
-                continue
-
-            res = check_proxy_health()
-            if res["ok"]:
-                set_state(
-                    proxy_ok=True,
-                    proxy_ip=res["ip"],
-                    proxy_latency_ms=res["latency_ms"],
-                    proxy_error=""
-                )
-                log_to_json("INFO", "Proxy", f"代理可用，IP: {res['ip']}, 延迟: {res['latency_ms']} ms")
-            else:
-                error_msg = res.get("error", "未知错误")
-                if active_openvpn_node_id:
-                    print(f"[警告] {LOCAL_PROXY_PORT} 端口本地代理当前不可用！原因: {error_msg}", flush=True)
-                    log_to_json("WARNING", "Proxy", f"代理不可用: {error_msg}")
-                set_state(
-                    proxy_ok=False,
-                    proxy_ip="-",
-                    proxy_latency_ms=0,
-                    proxy_error=error_msg
-                )
-
-                # If we intended to have an active VPN node but proxy failed, trigger auto-switch
-                if active_openvpn_node_id:
-                    ui_cfg = load_ui_config()
-                    routing_mode = ui_cfg.get("routing_mode", "auto")
-                    if routing_mode != "fixed_ip":
-                        with lock:
-                            nodes = read_nodes()
-                            active_node = next((n for n in nodes if n.get("id") == active_openvpn_node_id), None)
-                            if active_node:
-                                mark_blacklisted(active_node, f"代理连通性检测失败: {error_msg}")
-                                active_node["probe_status"] = "unavailable"
-                                write_json(NODES_FILE, nodes)
-                        auto_switch_node()
-                    else:
-                        print(f"[代理守护线程] 固定 IP 模式下代理不可用，正在尝试重启连接同一节点: {active_openvpn_node_id}", flush=True)
-                        is_connecting = False
-                        try:
-                            connect_node(active_openvpn_node_id)
-                        except Exception as e:
-                            print(f"[代理守护线程] 重启固定节点失败: {e}", flush=True)
-        except Exception as e:
-            print(f"[错误] 代理后台检测发生异常: {e}", flush=True)
-            log_to_json("ERROR", "Proxy", f"检测守护线程发生异常: {e}")
+            exit_manager.health_sweep()
+        except Exception as exc:
+            print(f"[错误] 代理后台检测发生异常: {exc}", flush=True)
+            log_to_json("ERROR", "Proxy", f"检测守护线程发生异常: {exc}")
         time.sleep(30)
 
 def active_node_pinger() -> None:
@@ -6255,31 +7230,10 @@ def active_node_pinger() -> None:
     while True:
         last_pinger_heartbeat = time.time()
         try:
-            if active_openvpn_running() and active_openvpn_node_id:
-                nodes = read_nodes()
-                node = next((n for n in nodes if n.get("id") == active_openvpn_node_id), None)
-                if node:
-                    ip = node.get("ip") or node.get("remote_host")
-                    port = parse_int(node.get("remote_port"))
-                    fallback = parse_int(node.get("ping"))
-                    if ip:
-                        latency = vpn_utils.ping_latency_ms(ip, port, fallback)
-                        if latency > 0:
-                            set_state(active_node_latency=f"{latency} ms")
-                        else:
-                            set_state(active_node_latency="检测超时")
-                    else:
-                        set_state(active_node_latency="检测超时")
-                else:
-                    set_state(active_node_latency="检测超时")
-            elif is_connecting:
-                set_state(active_node_latency="测试中...")
-            else:
-                set_state(active_node_latency="无活动连接")
-        except Exception as e:
-            print(f"[ERROR] active_node_pinger error: {e}", flush=True)
+            exit_manager.ping_sweep()
+        except Exception as exc:
+            print(f"[ERROR] active_node_pinger error: {exc}", flush=True)
         time.sleep(10)
-
 
 # ───────────────────────── 网页端版本检查与在线更新 ─────────────────────────
 # 与 `ml update` (install.sh update_service) 保持一致：
@@ -6836,9 +7790,22 @@ class Handler(BaseHTTPRequestHandler):
         elif effective_path == "/api/nodes":
             global last_active_ping_time, last_active_latency, active_openvpn_node_id
             nodes = read_nodes()
+            # A node is "active" when any exit runs on it; the per-node list says
+            # which exits, so the table can show "in use by 出口 2" instead of a
+            # single boolean that hides a second tunnel.
+            exit_status = {item["id"]: item for item in exit_manager.summary()}
+            in_use: dict[str, list[dict[str, Any]]] = {}
+            for item in exit_status.values():
+                node_key = item.get("nodeId") or ""
+                if item.get("running") and node_key:
+                    in_use.setdefault(node_key, []).append(
+                        {"id": item["id"], "name": item["name"], "slot": item["slot"]}
+                    )
             active_node = next((n for n in nodes if active_openvpn_node_id and n.get("id") == active_openvpn_node_id), None)
             for n in nodes:
-                n["active"] = (active_openvpn_node_id and n.get("id") == active_openvpn_node_id)
+                owners = in_use.get(n.get("id"), [])
+                n["active"] = bool(owners)
+                n["exit_slots"] = owners
             if active_node:
                 ip = active_node.get("ip") or active_node.get("remote_host")
                 if ip:
@@ -6867,6 +7834,10 @@ class Handler(BaseHTTPRequestHandler):
                     del stripped["config_text"]
                 stripped_nodes.append(stripped)
             self.send_json({"nodes": stripped_nodes, "state": get_state()})
+        elif effective_path in ("/api/exits", "/api/exits/list"):
+            self.send_json({"ok": True, "exits": exit_manager.summary(), "memory": exit_manager.memory()})
+        elif effective_path == "/api/exits/memory":
+            self.send_json({"ok": True, "memory": exit_manager.memory()})
         elif effective_path.startswith("/configs/"):
             filename = urllib.parse.unquote(effective_path.removeprefix("/configs/"))
             with lock:
@@ -6885,6 +7856,7 @@ class Handler(BaseHTTPRequestHandler):
             }
             proxy_ok = False
             proxy_err = ""
+            proxy_port = LOCAL_PROXY_PORT
             is_ipv6 = ":" in LOCAL_PROXY_HOST
             af = socket.AF_INET6 if is_ipv6 else socket.AF_INET
             s = None
@@ -6895,14 +7867,14 @@ class Handler(BaseHTTPRequestHandler):
                 if connect_host in ("::", "0.0.0.0", ""):
                     connect_host = "::1" if is_ipv6 else "127.0.0.1"
                 try:
-                    s.connect((connect_host, LOCAL_PROXY_PORT))
+                    s.connect((connect_host, proxy_port))
                     proxy_ok = True
                 except Exception:
                     if connect_host == "::1":
                         s.close()
                         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         s.settimeout(0.5)
-                        s.connect(("127.0.0.1", LOCAL_PROXY_PORT))
+                        s.connect(("127.0.0.1", proxy_port))
                         proxy_ok = True
                     else:
                         raise
@@ -6962,16 +7934,34 @@ class Handler(BaseHTTPRequestHandler):
                 "details": f"上次心跳: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(last_pinger_heartbeat)) if last_pinger_heartbeat > 0 else '等待启动'}",
                 "error": "" if pinger_ok else "线程可能已中止，无法实时刷新活动节点的 Ping 延迟。"
             }
+            exit_services = []
+            for status in exit_manager.summary():
+                if status["slot"] == 1:
+                    continue
+                exit_services.append(
+                    {
+                        "name": f"出口 {status['slot']} · {status['name']}",
+                        "status": "running" if status["running"] else "stopped",
+                        "details": (
+                            f"网卡 {status['dev']} / 路由表 {status['table']} / 代理 {status['proxyPort']}"
+                            + (f" / 节点 {status['nodeId']}" if status["nodeId"] else "")
+                        ),
+                        "error": status.get("lastError") or "",
+                    }
+                )
             self.send_json({
                 "ok": True,
                 "services": [
                     web_ui_status,
                     proxy_gateway_status,
                     openvpn_status,
+                    *exit_services,
                     collector_status,
                     checker_status,
                     pinger_status
-                ]
+                ],
+                "exits": exit_manager.summary(),
+                "memory": exit_manager.memory(),
             })
         elif effective_path == "/api/logs":
             logs_dir = DATA_DIR / "logs"
@@ -7005,6 +7995,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(payload)
             except Exception as exc:
                 self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+        elif effective_path in ("/api/exits", "/api/exits/list"):
+            self.send_json({"ok": True, "exits": exit_manager.summary(), "memory": exit_manager.memory()})
+        elif effective_path == "/api/exits/memory":
+            self.send_json({"ok": True, "memory": exit_manager.memory()})
         else:
             self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
@@ -7228,6 +8222,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json({"ok": False, "error": "无效的IP出站类型过滤"}, HTTPStatus.BAD_REQUEST)
                     return
                 
+                exit_id = str(payload.get("exit") or payload.get("exitId") or EXIT_DEFAULT_ID).strip()
                 ui_cfg = load_ui_config()
                 ui_cfg["routing_mode"] = routing_mode
                 ui_cfg["force_country"] = force_country
@@ -7244,7 +8239,11 @@ class Handler(BaseHTTPRequestHandler):
                 # new policy means for the node that is up right now, and switch
                 # when it no longer fits.
                 try:
-                    feedback = apply_routing_policy(ui_cfg)
+                    if exit_id == EXIT_DEFAULT_ID:
+                        feedback = apply_routing_policy(ui_cfg)
+                    else:
+                        exit_manager.update(exit_id, routing=ui_cfg)
+                        feedback = exit_manager.apply_policy(exit_id)
                 except Exception as fb_exc:
                     print(f"[路由策略] 评估失败: {fb_exc}", flush=True)
                     feedback = {
@@ -7342,30 +8341,28 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
         elif effective_path == "/api/disconnect":
             try:
-                ui_cfg = load_ui_config()
-                ui_cfg["connection_enabled"] = False
-                auth_file = DATA_DIR / "ui_auth.json"
-                with lock:
-                    DATA_DIR.mkdir(exist_ok=True, parents=True)
-                    auth_file.write_text(json.dumps(ui_cfg, ensure_ascii=False, indent=2), encoding="utf-8")
-                
-                stop_active_openvpn()
-                with lock:
-                    nodes = read_nodes()
-                    for item in nodes:
-                        item["active"] = False
-                    write_json(NODES_FILE, nodes)
+                payload = self.read_json_body()
+                exit_id = str(payload.get("exit") or payload.get("exitId") or EXIT_DEFAULT_ID).strip()
+                if exit_id == EXIT_DEFAULT_ID:
+                    ui_cfg = load_ui_config()
+                    ui_cfg["connection_enabled"] = False
+                    auth_file = DATA_DIR / "ui_auth.json"
+                    with lock:
+                        DATA_DIR.mkdir(exist_ok=True, parents=True)
+                        auth_file.write_text(json.dumps(ui_cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+                result = exit_manager.disconnect(exit_id)
                 global last_active_ping_time, last_active_latency
-                last_active_ping_time = 0.0
-                last_active_latency = 0
-                set_state(active_openvpn_node_id="", last_check_message="手动断开连接", active_node_latency="无活动连接")
-                self.send_json({"ok": True})
+                if exit_id == EXIT_DEFAULT_ID:
+                    last_active_ping_time = 0.0
+                    last_active_latency = 0
+                self.send_json({"ok": True, **result, "message": f"出口「{exit_manager.slot(exit_id)['name']}」已断开"})
             except Exception as exc:
                 self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
         elif effective_path == "/api/connect":
             try:
                 payload = self.read_json_body()
-                self.send_json({"ok": True, "message": connect_node(str(payload.get("id") or ""))})
+                exit_id = str(payload.get("exit") or payload.get("exitId") or EXIT_DEFAULT_ID).strip()
+                self.send_json({"ok": True, "message": exit_manager.connect(exit_id, str(payload.get("id") or ""))})
             except Exception as exc:
                 self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
         elif effective_path == "/api/test_node":
@@ -7395,6 +8392,115 @@ class Handler(BaseHTTPRequestHandler):
                         proxy_error=result.get("error", "未知错误")
                     )
                 self.send_json(result)
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+        elif effective_path == "/api/exits/state":
+            self.send_json({"ok": True, **exit_manager.state()})
+        elif effective_path == "/api/exits/create":
+            try:
+                payload = self.read_json_body()
+                slot = exit_manager.create(str(payload.get("name") or ""))
+                self.send_json(
+                    {
+                        "ok": True,
+                        "exit": slot,
+                        "message": f"已创建「{slot['name']}」：网卡 {slot['dev']} / 路由表 {slot['table']} / 本地代理 {slot['proxyPort']}",
+                    }
+                )
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+        elif effective_path in ("/api/exits/update", "/api/exits/rename"):
+            try:
+                payload = self.read_json_body()
+                exit_id = str(payload.get("id") or payload.get("exit") or "").strip()
+                name = payload.get("name")
+                routing = {
+                    key: payload[key]
+                    for key in (
+                        "routing_mode",
+                        "force_country",
+                        "routing_ip_type",
+                        "fav_fail_fallback",
+                        "favorite_node_ids",
+                        "fixed_node_id",
+                        "connection_enabled",
+                    )
+                    if key in payload
+                }
+                exit_manager.update(exit_id, name=name if name is not None else None, routing=routing or None)
+                feedback: dict[str, Any] = {}
+                if routing:
+                    feedback = exit_manager.apply_policy(exit_id)
+                self.send_json(
+                    {
+                        "ok": True,
+                        **feedback,
+                        # The status dict wins over the feedback's "exit" id: the
+                        # panel redraws the card from this answer.
+                        "exit": exit_manager.status_for(exit_id),
+                        "memory": exit_manager.memory(),
+                    }
+                )
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+        elif effective_path == "/api/exits/delete":
+            try:
+                payload = self.read_json_body()
+                exit_id = str(payload.get("id") or payload.get("exit") or "").strip()
+                result = exit_manager.delete(exit_id)
+                self.send_json({"ok": True, **result, "exits": exit_manager.summary(), "memory": exit_manager.memory()})
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+        elif effective_path in ("/api/exits/connect", "/api/exits/switch"):
+            try:
+                payload = self.read_json_body()
+                exit_id = str(payload.get("exit") or payload.get("exitId") or "").strip()
+                node_id = str(payload.get("node") or payload.get("id") or "").strip()
+                if not node_id:
+                    raise ValueError("请先在节点表里选择要连接的节点")
+                message = exit_manager.connect(exit_id, node_id)
+                self.send_json(
+                    {
+                        "ok": True,
+                        "message": message,
+                        "exit": exit_manager.status_for(exit_id),
+                        "memory": exit_manager.memory(),
+                    }
+                )
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+        elif effective_path == "/api/exits/auto-connect":
+            try:
+                payload = self.read_json_body()
+                exit_id = str(payload.get("exit") or payload.get("exitId") or "").strip()
+                node_id = str(payload.get("node") or "").strip() or exit_manager.auto_pick_node(exit_id)
+                if not node_id:
+                    raise RuntimeError("当前节点池没有符合该出口策略的可用节点")
+                self.send_json(
+                    {
+                        "ok": True,
+                        "message": exit_manager.connect(exit_id, node_id),
+                        "exit": exit_manager.status_for(exit_id),
+                        "memory": exit_manager.memory(),
+                    }
+                )
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+        elif effective_path == "/api/exits/disconnect":
+            try:
+                payload = self.read_json_body()
+                exit_id = str(payload.get("exit") or payload.get("exitId") or "").strip()
+                result = exit_manager.disconnect(exit_id)
+                slot = exit_manager.slot(exit_id)
+                self.send_json(
+                    {
+                        "ok": True,
+                        **result,
+                        "message": f"出口「{slot['name']}」已断开",
+                        "exit": exit_manager.status_for(exit_id),
+                        "memory": exit_manager.memory(),
+                    }
+                )
             except Exception as exc:
                 self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
         else:
@@ -7446,11 +8552,15 @@ def main() -> None:
             "blacklisted_nodes": 0,
         },
     )
-    threading.Thread(target=proxy_server.start_proxy_server, args=(LOCAL_PROXY_HOST, LOCAL_PROXY_PORT), daemon=True).start()
+    # Every configured exit gets its own loopback proxy listener (exit 1 keeps
+    # the historical port and device). `load` also migrates an old single-exit
+    # data directory into exit 1 before anything binds.
+    exit_manager.start()
     
     # Wait for the gateway to officially start
     print("[网关] 正在启动代理网关...", flush=True)
     gateway_ready = False
+    proxy_port = LOCAL_PROXY_PORT
     is_ipv6 = ":" in LOCAL_PROXY_HOST
     af = socket.AF_INET6 if is_ipv6 else socket.AF_INET
     for _ in range(30):
@@ -7462,7 +8572,7 @@ def main() -> None:
             if connect_host in ("::", "0.0.0.0", ""):
                 connect_host = "::1" if is_ipv6 else "127.0.0.1"
             try:
-                s.connect((connect_host, LOCAL_PROXY_PORT))
+                s.connect((connect_host, proxy_port))
                 gateway_ready = True
                 break
             except Exception:
@@ -7471,7 +8581,7 @@ def main() -> None:
                         s.close()
                         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         s.settimeout(0.5)
-                        s.connect(("127.0.0.1", LOCAL_PROXY_PORT))
+                        s.connect(("127.0.0.1", proxy_port))
                         gateway_ready = True
                         break
                     except Exception:

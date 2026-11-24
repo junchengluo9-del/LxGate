@@ -34,9 +34,11 @@ const DockerUpdateCommand = "docker compose pull && docker compose up -d"
 // updater, which replaces the binary and restarts the service while keeping the
 // SQLite database and vpngate_data/ untouched.
 //
-// LxGate's release repository is private, so every GitHub call carries the token
-// the operator saved in the update settings (or GITHUB_TOKEN in the panel's
-// environment). A token never leaves the panel: the settings endpoint answers
+// LxGate's release repository is public, so the version check and the update
+// download work with no credential at all. A read-only token the operator saved
+// in the update settings (or GITHUB_TOKEN in the panel's environment) is
+// optional: it raises GitHub's anonymous API limit and lets the panel follow a
+// private fork. A token never leaves the panel: the settings endpoint answers
 // with hasGithubToken and a masked hint.
 type SystemController struct {
 	BaseController
@@ -203,12 +205,15 @@ func (a *SystemController) collectVersion(ctx context.Context) versionPayload {
 	return payload
 }
 
+// releaseCheckMessage turns a failed release check into the line the System
+// page shows. The three expected failures say what to do about them in their
+// own message; anything else is unexplained and gets the generic prefix.
 func releaseCheckMessage(err error) string {
-	if errors.Is(err, release.ErrAuthRequired) {
-		return "The GitHub release repository is private: add a read-only GitHub token in the update settings. (" + err.Error() + ")"
-	}
-	if errors.Is(err, release.ErrNoRelease) {
-		return "no published release yet"
+	switch {
+	case errors.Is(err, release.ErrRateLimited),
+		errors.Is(err, release.ErrTokenRejected),
+		errors.Is(err, release.ErrNoRelease):
+		return err.Error()
 	}
 	return "could not reach GitHub releases: " + err.Error()
 }

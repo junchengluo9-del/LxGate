@@ -122,11 +122,8 @@
     "outbounds": "出站",
     "apiDocs": "API 文档",
     "hosts": "主机",
-    "docs": "文档",
     "openMenu": "打开菜单",
-    "pinSidebar": "固定侧边栏",
-    "unpinSidebar": "取消固定侧边栏",
-    "subFormats": "Sub Formats",
+    "subFormats": "订阅格式",
     "vpngate": "VPNGate 出口",
     "system": "系统与更新",
     "collapseSidebar": "收起侧栏",
@@ -323,10 +320,9 @@
       "xraySwitchAnyway": "仍然切换",
       "currentExit": {
         "title": "当前出口",
-        "mode": "接管模式",
-        "connect": "连接",
         "open": "打开 VPNGate",
-        "country": "切换国家"
+        "noExit": "当前没有出口在线",
+        "inbounds": "{count} 个入站"
       }
     },
     "inbounds": {
@@ -818,7 +814,8 @@
         "exitHint": "选择 VPNGate 出口后，保存时会把该入站加入接管规则，其客户端流量从隧道出去。",
         "exitAllHint": "当前接管模式为「全部入站走 VPNGate」，所有入站都走 VPNGate。若选择本机直连，其余入站会被切换为「指定入站」接管，本入站不走 VPNGate。",
         "exitManualHint": "当前为「仅手动分流」。保存为 VPNGate 出口会把接管模式切换为「指定入站」并加入本入站。",
-        "exitApplyFailed": "入站已保存，但出口去向未应用：{msg}"
+        "exitApplyFailed": "入站已保存，但出口去向未应用：{msg}",
+        "exitSelectHint": "该入站从所选出口出站；选「直连」则不经隧道、直接用本机 IP。每个出口都是独立的 VPNGate 隧道，出口 IP 各不相同。"
       },
       "info": {
         "mode": "模式",
@@ -2580,11 +2577,11 @@
       "tiles": {
         "engine": "引擎",
         "exit": "出口",
-        "proxy": "本地代理",
         "xray": "Xray 出站",
-        "nodes": "已缓存 {count} 个节点",
-        "restarts": "重启 {count} 次",
-        "takeover": "接管模式"
+        "deviceLine": "{dev} · 路由表 {table}",
+        "boundInbounds": "已绑入站",
+        "boundInboundsFoot": "面板内共 {total} 个入站",
+        "outboundFoot": "本地端口 :{port}"
       },
       "routingTitle": "路由策略",
       "mode": "模式",
@@ -2592,8 +2589,6 @@
       "countryPlaceholder": "选择国家/地区",
       "ipType": "出口 IP 类型",
       "favFallback": "收藏节点失败时自动降级",
-      "applyRouting": "应用路由",
-      "routingHint": "切换模式或节点不会改变本地代理端口，因此指向 vpngate-out 的 Xray 出站无需重启。",
       "modes": {
         "auto": "智能自动",
         "fixed_region": "固定国家",
@@ -2623,17 +2618,6 @@
       "filterEmpty": "没有符合当前筛选条件的节点",
       "filteredCount": "显示 {count} / {total} 个节点",
       "filteredCountAll": "共 {total} 个节点",
-      "routingFeedback": {
-        "anyPolicy": "不限条件",
-        "saved_policy_match": "路由已保存。当前节点 {node} 仍符合「{policy}」，无需切换。",
-        "saved_switching": "路由已保存。当前节点不符合「{policy}」，正在切换到 {node}（{nodeType}）。",
-        "saved_connecting": "路由已保存，正在按「{policy}」连接 {node}（{nodeType}）。",
-        "saved_pending_switch": "路由已保存。当前节点不符合「{policy}」，节点检测结束后会自动切换。",
-        "saved_no_match_kept": "路由已保存，但节点池里暂无符合「{policy}」的可用节点；暂时保留当前节点 {node}，出现符合条件的节点后会自动切换。",
-        "saved_no_match": "路由已保存，但节点池里暂无符合「{policy}」的可用节点。",
-        "saved_fixed_ip": "路由已保存。固定节点模式由你指定的节点决定，不受国家与 IP 类型筛选影响。",
-        "saved_disabled": "路由已保存（{policy}）。当前已关闭自动连接，面板不会主动重连。"
-      },
       "refreshNodes": "更新节点",
       "refreshHint": "重新拉取 VPNGate 候选节点并测速",
       "fullCheck": "完整检测",
@@ -2646,12 +2630,6 @@
       "testSelected": "测速 {count} 个",
       "logsTitle": "实时日志",
       "logsEmpty": "今天暂无日志。",
-      "xrayBindTitle": "Xray 出站",
-      "xrayBindHint": "一键注册名为 vpngate-out 的 socks 出站，指向本地代理。在路由规则中对该 tag 分流即可走 VPNGate。",
-      "bindOutbound": "注册 vpngate-out",
-      "rebindOutbound": "重新绑定 vpngate-out",
-      "unbindOutbound": "移除出站",
-      "notBound": "未绑定",
       "columns": {
         "country": "国家",
         "ipType": "IP 类型",
@@ -2667,38 +2645,100 @@
         "disconnected": "已断开隧道"
       },
       "takeover": {
-        "title": "流量接管",
-        "hint": "选择哪些入站从 VPNGate 出口上网。面板只维护一条路由规则并自动应用到 Xray，无需手写 JSON。",
-        "applied": "接管模式已应用",
-        "apply": "应用",
-        "selectAll": "全选",
-        "clearAll": "清空",
-        "selectedCount": "已选 {count} / {total} 个入站",
         "inboundsEmpty": "还没有入站。先添加一个入站，再勾选需要走 VPNGate 的入站。",
-        "modes": {
-          "all": "全部入站走 VPNGate",
-          "selected": "指定入站走 VPNGate",
-          "manual": "仅手动分流"
-        },
-        "hints": {
-          "all": "本面板所有入站的流量都从 VPNGate 出口出去。内网、DNS 与面板 API 规则优先级更高，面板本身仍可正常访问。",
-          "selected": "只有下面勾选的入站走 VPNGate，其余入站仍然从本机直连出去。",
-          "manual": "面板不添加任何路由规则，你自己的 Xray 路由配置保持原样。"
-        },
         "advanced": {
           "title": "高级技术设置",
           "proxy": "本地出口代理",
           "device": "隧道网卡",
           "rule": "托管规则",
           "engine": "引擎 API"
-        }
+        },
+        "bindTitle": "入站绑定",
+        "bindHint": "勾选即把该入站改绑到「{name}」；取消勾选则回落为直连。半选表示全局接管规则已把它带到本出口，勾一下即变成明确绑定。",
+        "bindCount": "本出口已绑 {bound} / {total} 个入站",
+        "bindAll": "全部接入",
+        "bindDirect": "全部直连",
+        "boundToast": "该入站已改为走「{name}」",
+        "directToast": "该入站已恢复直连",
+        "movedToast": "已把 {count} 个入站改到「{name}」",
+        "freedToast": "已把 {count} 个入站恢复直连",
+        "onThisExit": "本出口",
+        "currentlyOn": "当前：{name}",
+        "viaTakeover": "接管 → {name}",
+        "direct": "直连",
+        "fallbackNote": "取消勾选的入站会回落到全局接管规则，仍走「{name}」。",
+        "directNote": "未绑定的入站走直连。",
+        "clearRule": "改为直连兜底",
+        "ruleCleared": "已关闭全局接管规则，未绑定的入站现在直连"
+      },
+      "exits": {
+        "title": "多住宅出口",
+        "hint": "每个出口一条独立隧道，各有自己的策略路由表与本地代理端口；每个入站端口只走其中一个出口。",
+        "create": "新建出口",
+        "createTitle": "新建出口",
+        "createHint": "系统会自动分配空闲的隧道网卡、策略路由表与本地代理端口。新建后不会自动连接，需你手动选择节点。",
+        "namePlaceholder": "出口 {slot}",
+        "slot": "出口 {slot}",
+        "memoryLine": "已启用 {active} / 共 {configured} 个出口 · 可用内存 {available} MB（为系统保留 {reserve} MB，单隧道约 {perTunnel} MB）",
+        "memoryOk": "最多可同时承载 {count} 个出口",
+        "memoryLow": "内存已不足以再开一条隧道",
+        "memoryWarnTitle": "当前内存不足以再启动新隧道",
+        "memoryWarnBody": "已在运行的出口不会被断开或抢占。请先断开不用的出口，或给 VPS 扩容后再激活新出口。",
+        "empty": "还没有出口",
+        "unavailable": "引擎未运行，暂时读不到出口列表",
+        "noNode": "尚未连接节点",
+        "connectHint": "按该出口自己的策略自动挑选最佳节点，并跳过其它出口正在使用的节点。",
+        "switchNode": "换节点",
+        "policy": "策略",
+        "saved": "出口已保存",
+        "created": "出口已创建",
+        "delete": "删除",
+        "deleted": "已删除「{name}」，使用它的入站已回到直连",
+        "deleteTitle": "删除「{name}」？",
+        "deleteBody": "该出口的隧道会停止，Xray 出站与分流规则一并移除，原使用它的入站改为直连。默认出口不可删除。",
+        "policyHint": "每个出口可单独设置国家、IP 类型与收藏节点回退；节点池共享，同一节点不会同时给两个出口使用。",
+        "occupiedBy": "已被「{name}」占用",
+        "connectedToast": "出口已连接",
+        "select": "选中「{name}」",
+        "selectedHint": "下方所有配置都在修改「{name}」",
+        "boundCount": "{count}/{total} 个入站",
+        "connectTo": "连接到 {name}",
+        "connectTarget": "本表「连接」按钮会把节点接到「{name}」；要换目标请点上方出口卡片。",
+        "disconnectHint": "断开「{name}」",
+        "savePolicy": "保存策略",
+        "connectedSince": "自 {time} 起已连接"
+      },
+      "toUltra": "切换到极暗模式",
+      "exitsOnline": "{count} 个出口在线",
+      "xrayStates": {
+        "running": "运行中",
+        "stop": "已停止",
+        "error": "异常",
+        "unknown": "未知"
+      },
+      "stages": {
+        "idle": "空闲",
+        "cleanup": "清理旧连接",
+        "write": "写入节点配置",
+        "start": "启动 OpenVPN",
+        "route": "配置策略路由",
+        "probe": "检测出口连通性",
+        "connected": "已连接",
+        "resolve": "解析节点域名",
+        "link": "连接节点",
+        "tls": "TLS 握手",
+        "verify": "校验证书",
+        "negotiate": "协商加密通道",
+        "push": "请求配置",
+        "apply": "应用配置",
+        "device": "创建网卡",
+        "ifconfig": "配置网卡"
       }
     },
     "system": {
       "updateAvailable": "有可用更新",
       "updateAvailableHint": "LxGate v{version} 已发布",
       "upToDate": "已是最新",
-      "channel": "通道：{channel}",
       "latest": "最新 v{version}",
       "checkAgain": "重新检查",
       "updateNow": "立即更新",
@@ -2729,22 +2769,26 @@
         "updateStarted": "已开始更新"
       },
       "updateSettingsTitle": "更新设置",
-      "updateSettingsHint": "LxGate 的发布仓库是私有仓库：在这里保存一个只读 GitHub Token，面板才能读取发布版本并下载更新。",
+      "updateSettingsHint": "LxGate 的发布仓库是公开仓库：面板无需 Token 即可检查 GitHub 版本并下载更新。只读 Token 是可选项：可提高 GitHub 匿名 API 限额（每台服务器每小时 60 次），面板跟踪私有分支时才必须填写。",
       "channelLabel": "更新通道",
       "channelHint": "稳定版跟随最新正式发布；开发版跟随最新提交的滚动构建（dev-latest）。",
       "channelStable": "稳定版",
       "channelDev": "开发版",
       "channelSaved": "更新通道已切换",
       "tokenLabel": "GitHub Token",
-      "tokenHint": "只读（contents: read）权限的仓库 Token，保存在本服务器，之后不会再完整显示。",
+      "tokenHint": "可选。只读（contents: read）权限的 Token 可提高 GitHub 限额，只有跟踪私有分支时才必须填写；保存在本服务器，之后不会再完整显示。",
       "tokenPlaceholder": "ghp_… 或 github_pat_…",
       "tokenSaved": "GitHub Token 已保存",
       "tokenConfigured": "已配置：{mask}",
-      "tokenNotConfigured": "尚未配置 Token",
+      "tokenNotConfigured": "尚未配置 Token（无需配置）",
       "tokenSave": "保存 Token",
       "tokenClear": "清除",
       "tokenCleared": "GitHub Token 已清除",
-      "tokenRequiredHint": "私有仓库必须先填写 Token，才能检查更新。"
+      "checkFailedHint": "版本检查失败，具体原因见下方。",
+      "notChecked": "未检查"
+    },
+    "apiDocs": {
+      "websocketEvents": "WebSocket 事件"
     }
   },
   "tgbot": {

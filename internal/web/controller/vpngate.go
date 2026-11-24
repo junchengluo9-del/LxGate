@@ -56,6 +56,8 @@ func (a *VPNGateController) initRouter(g *gin.RouterGroup) {
 	g.POST("/xray-bind", a.bindOutbound)
 	g.POST("/xray-unbind", a.unbindOutbound)
 	g.POST("/takeover", a.setTakeover)
+
+	a.registerExitRoutes(g)
 }
 
 // status reports the supervisor's view of the engine plus, when it is up, the
@@ -504,7 +506,6 @@ func engineMessage(decoded any) string {
 	}
 	return ""
 }
-
 
 func rawMessage(raw json.RawMessage) (any, error) {
 	var decoded any

@@ -247,22 +247,46 @@ install_vpngate_stack() {
     fi
 }
 
-# The release archive ships vpngate/ next to the binary. When the archive does
-# not (older tag, source install), fetch the engine straight from the repository
-# so the feature works without a rebuild.
+# The VPNGate engine's Python sources ship in the release archive as
+# lxgate/vpngate/ next to the binary, so the copy installed here is the one the
+# panel was built with. Old releases shipped no vpngate/ directory at all: the
+# scripts are then fetched from the repository, and whatever still fails is no
+# longer fatal, because the panel embeds the engine in the binary and writes it
+# into this directory on its first start.
 install_vpngate_engine() {
     local dest="/opt/lxgate/vpngate"
-    mkdir -p "$dest"
+    local src="${xui_folder}/vpngate"
+    local files="vpngate_manager.py proxy_server.py vpn_utils.py"
+    local f
+    mkdir -p "$dest" || {
+        echo -e "${yellow}Could not create ${dest}; the panel writes the engine there itself on first start.${plain}" >&2
+        return 1
+    }
     if [[ -f "$dest/vpngate_manager.py" && -f "$dest/proxy_server.py" && -f "$dest/vpn_utils.py" ]]; then
         return 0
     fi
+    # Prefer the archive, which is the exact build of the binary being installed.
+    if [[ -f "$src/vpngate_manager.py" && -f "$src/proxy_server.py" && -f "$src/vpn_utils.py" ]]; then
+        for f in $files; do
+            if ! cp -f "$src/$f" "${dest}/${f}.tmp.$$" || ! mv -f "${dest}/${f}.tmp.$$" "${dest}/${f}"; then
+                rm -f "${dest}/${f}.tmp.$$"
+                echo -e "${yellow}Could not copy ${f} from the release archive; the panel writes the engine it embeds on its next start.${plain}" >&2
+                return 1
+            fi
+            chmod 644 "${dest}/${f}" 2> /dev/null || true
+        done
+        echo -e "${green}VPNGate engine installed from the release archive in ${dest}.${plain}" >&2
+        return 0
+    fi
     local base="${LXGATE_RAW_BASE}/main/vpngate"
-    local f
-    for f in vpngate_manager.py proxy_server.py vpn_utils.py; do
-        if ! curl -fsSL "${base}/${f}" -o "${dest}/${f}"; then
-            echo -e "${yellow}Could not fetch ${f} from ${base}; the VPNGate engine will be unavailable.${plain}" >&2
+    for f in $files; do
+        if ! curl -fsSL "${base}/${f}" -o "${dest}/${f}.tmp.$$"; then
+            rm -f "${dest}/${f}.tmp.$$"
+            echo -e "${yellow}Could not fetch ${f} from ${base}. The panel writes the engine it embeds in its binary into ${dest} on its next start, so VPNGate stays available.${plain}" >&2
             return 1
         fi
+        mv -f "${dest}/${f}.tmp.$$" "${dest}/${f}"
+        chmod 644 "${dest}/${f}" 2> /dev/null || true
     done
     echo -e "${green}VPNGate engine installed in ${dest}.${plain}" >&2
 }

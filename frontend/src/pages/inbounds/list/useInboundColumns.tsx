@@ -4,6 +4,7 @@ import { Popover, Switch, Tag, Tooltip, type TableColumnType } from 'antd';
 import { TeamOutlined } from '@ant-design/icons';
 
 import { inboundUsesVpngate, useVpngateTakeoverQuery } from '@/api/queries/useVpngateTakeover';
+import { exitForInbound, useVpngateExitsQuery } from '@/api/queries/useVpngateExits';
 
 import { SizeFormatter, IntlUtil, ColorUtils } from '@/utils';
 import { InfinityIcon } from '@/components/ui';
@@ -63,6 +64,9 @@ export function useInboundColumns({
   // Which inbounds leave through the VPNGate exit is decided by one panel-managed
   // rule; the badge reads that rule instead of keeping a second copy per row.
   const takeover = useVpngateTakeoverQuery().data;
+  // Per-inbound exit bindings live in the Xray template; the list reads them so
+  // an inbound shows which of several exits (or "direct") it leaves through.
+  const exitsState = useVpngateExitsQuery().data;
 
   return useMemo(() => {
     const compareText = (a: string | undefined | null, b: string | undefined | null) =>
@@ -287,17 +291,38 @@ export function useInboundColumns({
           return <div className="protocol-tags">{tags}</div>;
         },
       },
-      ...(takeover && takeover.mode !== 'manual'
+      ...(exitsState || (takeover && takeover.mode !== 'manual')
         ? [
             {
               title: t('pages.inbounds.exitColumn'),
               key: 'exit',
               align: 'center' as const,
-              width: 120,
+              width: 130,
               sorter: (a: DBInboundRecord, b: DBInboundRecord) =>
                 Number(inboundUsesVpngate(takeover, b.tag)) -
                 Number(inboundUsesVpngate(takeover, a.tag)),
               render: (_: unknown, record: DBInboundRecord) => {
+                // The template's own binding wins: it names which exit, not just
+                // "VPNGate", so two exits are distinguishable at a glance.
+                if (exitsState) {
+                  const exit = exitForInbound(exitsState, record.tag);
+                  if (!exit) {
+                    return (
+                      <Tooltip title={t('pages.inbounds.exitDirectHint')}>
+                        <Tag bordered={false}>{t('pages.inbounds.exitDirect')}</Tag>
+                      </Tooltip>
+                    );
+                  }
+                  return (
+                    <Tooltip
+                      title={`${t('pages.inbounds.exitVpngateHint')} · ${exit.dev} / ${exit.proxyPort}`}
+                    >
+                      <Tag color="geekblue" bordered={false}>
+                        {exit.name}
+                      </Tag>
+                    </Tooltip>
+                  );
+                }
                 const viaVpngate = inboundUsesVpngate(takeover, record.tag);
                 return (
                   <Tooltip
@@ -517,6 +542,7 @@ export function useInboundColumns({
     trafficDiff,
     datepicker,
     takeover,
+    exitsState,
     onRowAction,
     onSwitchEnable,
   ]);

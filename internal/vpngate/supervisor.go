@@ -56,6 +56,10 @@ type Status struct {
 	SocksURL      string `json:"socksUrl"`
 	HTTPProxyURL  string `json:"httpProxyUrl"`
 	ScriptPath    string `json:"scriptPath"`
+	// EngineVersion identifies the embedded engine sources this binary was
+	// built with; the scripts in ScriptPath's directory are refreshed to it at
+	// boot (see EnsureEngine).
+	EngineVersion string `json:"engineVersion,omitempty"`
 	PythonPath    string `json:"pythonPath"`
 	DataDir       string `json:"dataDir"`
 	StartedAt     string `json:"startedAt,omitempty"`
@@ -72,12 +76,13 @@ type Supervisor struct {
 	state     string
 	reason    string
 	warning   string
-	cmd       *exec.Cmd
-	pid       int
-	startedAt time.Time
-	lastExit  string
-	restarts  int
-	logTail   []string
+	cmd           *exec.Cmd
+	pid           int
+	startedAt     time.Time
+	lastExit      string
+	restarts      int
+	engineVersion string
+	logTail       []string
 
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -101,7 +106,11 @@ func NewSupervisor(cfg Config) *Supervisor {
 func (s *Supervisor) Client() *Client { return s.client }
 
 // Config returns a copy of the supervisor configuration.
-func (s *Supervisor) Config() Config { return s.cfg }
+func (s *Supervisor) Config() Config {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cfg
+}
 
 // Start launches the engine in the background and returns immediately: the
 // panel must come up even when the engine can never run on this host.
@@ -117,7 +126,25 @@ func (s *Supervisor) Start(ctx context.Context) {
 		logger.Warningf("vpngate: engine not started: %v", err)
 		return
 	}
-	warning, err := s.cfg.CheckPrerequisites()
+	// The engine's Python sources are compiled into this binary, so a missing
+	// or outdated copy in the engine directory is replaced here before the
+	// prerequisites check looks for it. A fresh install whose archive lacked
+	// vpngate/, a self-update that only swapped the binary, and a host that
+	// could not reach raw.githubusercontent.com all end up with an engine that
+	// matches the running panel.
+	//
+	// EnsureEngine works on a copy and may repoint ScriptPath at the copy it
+	// just wrote; the result is stored under the lock every reader takes.
+	cfg := s.cfg
+	report := cfg.EnsureEngine()
+	s.mu.Lock()
+	s.cfg = cfg
+	s.engineVersion = report.Version
+	s.mu.Unlock()
+	if report.Skipped != "" {
+		logger.Debugf("vpngate: engine scripts not refreshed in %s: %s", report.Dir, report.Skipped)
+	}
+	warning, err := cfg.CheckPrerequisites()
 	if err != nil {
 		s.setState(StateUnavailable, err.Error(), "")
 		close(s.done)
@@ -173,24 +200,27 @@ func (s *Supervisor) Status() Status {
 	restarts := s.restarts
 	startedAt := s.startedAt
 	lastExit := s.lastExit
+	engineVersion := s.engineVersion
+	cfg := s.cfg
 	s.mu.RUnlock()
 
 	status := Status{
-		Enabled:      s.cfg.Enabled,
+		Enabled:      cfg.Enabled,
 		State:        state,
 		Reason:       reason,
 		Warning:      warning,
 		Restarts:     restarts,
-		APIPort:      s.cfg.APIPort,
-		ProxyPort:    s.cfg.ProxyPort,
-		APIAddress:   s.cfg.Address(),
-		ProxyAddress: s.cfg.ProxyAddress(),
-		OpenVPNDev:   s.cfg.OpenVPNDev,
-		SocksURL:     "socks5://" + s.cfg.ProxyAddress(),
-		HTTPProxyURL: "http://" + s.cfg.ProxyAddress(),
-		ScriptPath:   s.cfg.ScriptPath,
-		PythonPath:   s.cfg.PythonBin,
-		DataDir:      s.cfg.DataDir,
+		APIPort:      cfg.APIPort,
+		ProxyPort:    cfg.ProxyPort,
+		APIAddress:   cfg.Address(),
+		ProxyAddress: cfg.ProxyAddress(),
+		OpenVPNDev:   cfg.OpenVPNDev,
+		SocksURL:     "socks5://" + cfg.ProxyAddress(),
+		HTTPProxyURL: "http://" + cfg.ProxyAddress(),
+		ScriptPath:    cfg.ScriptPath,
+		EngineVersion: engineVersion,
+		PythonPath:    cfg.PythonBin,
+		DataDir:      cfg.DataDir,
 		LastExit:     lastExit,
 	}
 	status.Available = state != StateDisabled && state != StateUnavailable

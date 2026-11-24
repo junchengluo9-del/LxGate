@@ -163,14 +163,55 @@ func (c *Client) Disconnect(ctx context.Context) (json.RawMessage, error) {
 	return c.rawPost(ctx, "/api/disconnect", nil)
 }
 
+// Exits returns every exit slot plus the host's memory budget.
+func (c *Client) Exits(ctx context.Context) (json.RawMessage, error) {
+	return c.raw(ctx, "/api/exits")
+}
+
+// CreateExit adds one exit slot. The engine picks the device, policy table and
+// loopback proxy port; nothing is connected until the operator asks.
+func (c *Client) CreateExit(ctx context.Context, name string) (json.RawMessage, error) {
+	return c.rawPost(ctx, "/api/exits/create", map[string]any{"name": name})
+}
+
+// UpdateExit renames an exit and/or changes its routing policy.
+func (c *Client) UpdateExit(ctx context.Context, exitID string, payload map[string]any) (json.RawMessage, error) {
+	body := map[string]any{"id": exitID}
+	for key, value := range payload {
+		body[key] = value
+	}
+	return c.rawPost(ctx, "/api/exits/update", body)
+}
+
+// DeleteExit removes an exit slot (the default exit cannot be deleted).
+func (c *Client) DeleteExit(ctx context.Context, exitID string) (json.RawMessage, error) {
+	return c.rawPost(ctx, "/api/exits/delete", map[string]any{"id": exitID})
+}
+
+// ConnectExit puts one exit on one node. Switching is the same operation: the
+// engine replaces that slot's tunnel and leaves the other exits alone.
+func (c *Client) ConnectExit(ctx context.Context, exitID, nodeID string) (json.RawMessage, error) {
+	return c.rawPost(ctx, "/api/exits/connect", map[string]any{"exit": exitID, "node": nodeID})
+}
+
+// AutoConnectExit lets the engine pick a node its saved policy accepts.
+func (c *Client) AutoConnectExit(ctx context.Context, exitID string) (json.RawMessage, error) {
+	return c.rawPost(ctx, "/api/exits/auto-connect", map[string]any{"exit": exitID})
+}
+
+// DisconnectExit tears one exit's tunnel down and disables its auto-connect.
+func (c *Client) DisconnectExit(ctx context.Context, exitID string) (json.RawMessage, error) {
+	return c.rawPost(ctx, "/api/exits/disconnect", map[string]any{"exit": exitID})
+}
+
 // SetRouting switches the engine's routing mode without touching the tunnel
 // port, so Xray keeps routing through the same local proxy.
 func (c *Client) SetRouting(ctx context.Context, mode, country, ipType string, favFallback bool) (json.RawMessage, error) {
 	return c.rawPost(ctx, "/api/update_routing", map[string]any{
-		"routing_mode":       mode,
-		"force_country":      country,
-		"routing_ip_type":    ipType,
-		"fav_fail_fallback":  favFallback,
+		"routing_mode":      mode,
+		"force_country":     country,
+		"routing_ip_type":   ipType,
+		"fav_fail_fallback": favFallback,
 	})
 }
 

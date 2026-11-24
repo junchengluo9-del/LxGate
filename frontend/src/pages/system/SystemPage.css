@@ -4,11 +4,6 @@
   padding: 24px;
 }
 
-.sys-page {
-  max-width: 1080px;
-  margin: 0 auto;
-}
-
 .sys-hero-main {
   display: flex;
   align-items: flex-start;
@@ -95,10 +90,6 @@
 .sys-token-row .ant-input {
   flex: 1 1 280px;
   min-width: 220px;
-}
-
-.sys-token-hint {
-  margin: 10px 0 0;
 }
 
 @media (max-width: 768px) {

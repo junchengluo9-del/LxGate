@@ -17,19 +17,15 @@ import {
   MailOutlined,
   MenuFoldOutlined,
   MenuOutlined,
-  MoonFilled,
-  MoonOutlined,
-  ReadOutlined,
   SafetyOutlined,
   SearchOutlined,
   SettingOutlined,
-  SunOutlined,
   TelegramFilled,
 } from '@ant-design/icons';
 
 import { HttpUtil } from '@/utils';
 import { formatPanelVersion } from '@/lib/panel-version';
-import { pauseAnimationsUntilLeave, useTheme } from '@/hooks/useTheme';
+import { useTheme } from '@/hooks/useTheme';
 import { useAllSettings } from '@/api/queries/useAllSettings';
 import { useCommandPalette } from '@/components/command-palette/useCommandPalette';
 import { BRAND_NAME, REPO_URL } from '@/lib/brand';
@@ -39,28 +35,12 @@ import './AppSidebar.css';
 // The palette listens for Ctrl as well as Cmd, so the chip must not show a
 // Mac glyph to the Linux and Windows operators who are most of this panel's.
 const SHORTCUT_MODIFIER = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent) ? '⌘' : 'Ctrl';
-const DOCS_URL = 'https://docs.sanaei.dev/';
 const LOGOUT_KEY = '__logout__';
 // Desktop rail widths. The expanded sidebar is wide enough for the full
 // wordmark and every menu label; the rail is icon-only.
 const RAIL_WIDTH = 76;
 const SIDER_WIDTH = 232;
 const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed';
-
-function DocsButton({ ariaLabel }: { ariaLabel: string }) {
-  return (
-    <a
-      href={DOCS_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="sidebar-docs"
-      aria-label={ariaLabel}
-      title={ariaLabel}
-    >
-      <ReadOutlined aria-hidden />
-    </a>
-  );
-}
 
 function VersionBadge({ version, collapsed }: { version: string; collapsed?: boolean }) {
   if (!version) return null;
@@ -80,40 +60,6 @@ function VersionBadge({ version, collapsed }: { version: string; collapsed?: boo
   );
 }
 
-function ThemeCycleButton({
-  id,
-  isDark,
-  isUltra,
-  onCycle,
-  ariaLabel,
-}: {
-  id: string;
-  isDark: boolean;
-  isUltra: boolean;
-  onCycle: () => void;
-  ariaLabel: string;
-}) {
-  const icon = !isDark ? (
-    <SunOutlined aria-hidden />
-  ) : !isUltra ? (
-    <MoonOutlined aria-hidden />
-  ) : (
-    <MoonFilled aria-hidden />
-  );
-  return (
-    <button
-      id={id}
-      type="button"
-      className="sidebar-theme-cycle"
-      aria-label={ariaLabel}
-      title={ariaLabel}
-      onClick={onCycle}
-    >
-      {icon}
-    </button>
-  );
-}
-
 function readSidebarCollapsed() {
   try {
     return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
@@ -130,7 +76,7 @@ function saveSidebarCollapsed(collapsed: boolean) {
 
 export default function AppSidebar() {
   const { t } = useTranslation();
-  const { isDark, isUltra, toggleTheme, toggleUltra } = useTheme();
+  const { isDark } = useTheme();
   const { open: openCommandPalette } = useCommandPalette();
   const navigate = useNavigate();
   const { pathname, hash } = useLocation();
@@ -303,22 +249,6 @@ export default function AppSidebar() {
     [openLink],
   );
 
-  const cycleTheme = useCallback(
-    (id: string) => {
-      pauseAnimationsUntilLeave(id);
-      if (!isDark) {
-        toggleTheme();
-        if (isUltra) toggleUltra();
-      } else if (!isUltra) {
-        toggleUltra();
-      } else {
-        toggleUltra();
-        toggleTheme();
-      }
-    },
-    [isDark, isUltra, toggleTheme, toggleUltra],
-  );
-
   // Keep the rail honest when the viewport shrinks to the drawer breakpoint and
   // back, without writing the drawer's state into the desktop preference.
   useEffect(() => {
@@ -404,18 +334,11 @@ export default function AppSidebar() {
           onClick={onMenuClick}
         />
 
+        {/* One clean line: the version doubles as the link to the project. The
+            theme switch lives in the top bar only, so the rail is never asked to
+            carry two of the same control. */}
         <div className="sider-footer">
           <VersionBadge version={panelVersion} collapsed={collapsed} />
-          <div className="sider-tools">
-            <DocsButton ariaLabel={t('menu.docs') || 'Documentation'} />
-            <ThemeCycleButton
-              id="theme-cycle"
-              isDark={isDark}
-              isUltra={isUltra}
-              onCycle={() => cycleTheme('theme-cycle')}
-              ariaLabel={t('menu.theme')}
-            />
-          </div>
         </div>
       </Layout.Sider>
 
@@ -437,14 +360,6 @@ export default function AppSidebar() {
             <span className="drawer-brand">{BRAND_NAME}</span>
           </div>
           <div className="drawer-header-actions">
-            <DocsButton ariaLabel={t('menu.docs') || 'Documentation'} />
-            <ThemeCycleButton
-              id="theme-cycle-drawer"
-              isDark={isDark}
-              isUltra={isUltra}
-              onCycle={() => cycleTheme('theme-cycle-drawer')}
-              ariaLabel={t('menu.theme')}
-            />
             <button
               className="drawer-close"
               type="button"

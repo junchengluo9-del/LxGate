@@ -2,10 +2,12 @@
 // and dependency-free: the panel uses it for the in-app version badge and the
 // changelog shown on the System & Update page.
 //
-// LxGate is published from a private repository, so every call may carry a
-// token. The token is a read-only GitHub token the operator stores in the panel
-// settings (or GITHUB_TOKEN/GITHUB_API_TOKEN in the environment); it is never
-// logged.
+// LxGate is published from a public repository, so checking for updates and
+// downloading one need no credential at all. A token is optional: it raises
+// GitHub's anonymous API limit (60 requests an hour per address, which a panel
+// checking every 15 minutes shares with anything else on the host) and lets a
+// panel follow a private fork. When one is set it comes from the panel settings
+// (or GITHUB_TOKEN/GITHUB_API_TOKEN in the environment) and is never logged.
 package release
 
 import (
@@ -17,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -136,13 +139,20 @@ func (c *Client) ByTag(ctx context.Context, tag string) (*Info, error) {
 }
 
 // ErrNoRelease means the repository exists but has no published release yet.
+// GitHub also answers 404 for a private fork read without a token, so the
+// message says both; a public repository needs no token to avoid it.
 var ErrNoRelease = errors.New("no published release found")
 
-// ErrAuthRequired is what a private repository answers without a token: GitHub
-// reports 404 rather than 403 so the repository's existence stays hidden. It
-// wraps ErrNoRelease because from the panel's point of view there is still no
-// release to install.
-var ErrAuthRequired = fmt.Errorf("%w: the repository answered 404, which is what a private repository returns without a token", ErrNoRelease)
+// ErrRateLimited means GitHub refused the call for hitting its limit: 60
+// requests an hour without a token, counted per source address. It wraps
+// nothing, because a check that returns it is not "the repository is fine, it
+// just has no release".
+var ErrRateLimited = errors.New("GitHub API rate limit reached")
+
+// ErrTokenRejected means GitHub answered 401/403 for a token that is set,
+// rather than for the anonymous limit: the credential is invalid, expired, or
+// not allowed to read the repository.
+var ErrTokenRejected = errors.New("GitHub rejected the token")
 
 func (c *Client) fetch(ctx context.Context, path string) (*Info, error) {
 	if c.repo == "" || !strings.Contains(c.repo, "/") {
@@ -167,13 +177,22 @@ func (c *Client) fetch(ctx context.Context, path string) (*Info, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
-		if c.token == "" {
-			return nil, ErrAuthRequired
-		}
-		return nil, ErrNoRelease
+		return nil, c.notFoundError()
 	}
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("GitHub rejected the token (HTTP %d); check that it is valid and still allowed to read the repository", resp.StatusCode)
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("%w (HTTP 401): check that it is valid and still allowed to read the release repository", ErrTokenRejected)
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		// A 403 is the rate limit when GitHub says nothing is left, and a bad
+		// token when one is set and the limit is not the reason. Without a token
+		// there is no credential to blame: an anonymous 403 is the limit.
+		if limited, reset := rateLimited(resp); limited {
+			return nil, rateLimitError(reset)
+		}
+		if c.token != "" {
+			return nil, fmt.Errorf("%w (HTTP 403): check that it is valid and allowed to read the release repository", ErrTokenRejected)
+		}
+		return nil, rateLimitError(time.Time{})
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("github releases returned HTTP %d", resp.StatusCode)
@@ -211,6 +230,41 @@ func (c *Client) fetch(ctx context.Context, path string) (*Info, error) {
 		return nil, errors.New("release payload has no tag")
 	}
 	return info, nil
+}
+
+// notFoundError distinguishes the two meanings of a 404 from GitHub: a public
+// repository with no published release, and a private fork read without a
+// token (GitHub hides its existence behind the same 404). Neither is a reason
+// to demand a token for this public repository.
+func (c *Client) notFoundError() error {
+	if c.token != "" {
+		return ErrNoRelease
+	}
+	return fmt.Errorf("%w: the release repository answered 404 -- it has no published release, or it is a private fork that needs a read-only token", ErrNoRelease)
+}
+
+// rateLimited reads GitHub's rate-limit headers off a 403. A limited call always
+// carries X-RateLimit-Remaining: 0; the reset stamp is optional.
+func rateLimited(resp *http.Response) (bool, time.Time) {
+	if resp.Header.Get("X-RateLimit-Remaining") != "0" {
+		return false, time.Time{}
+	}
+	var reset time.Time
+	if raw := strings.TrimSpace(resp.Header.Get("X-RateLimit-Reset")); raw != "" {
+		if seconds, err := strconv.ParseInt(raw, 10, 64); err == nil && seconds > 0 {
+			reset = time.Unix(seconds, 0)
+		}
+	}
+	return true, reset
+}
+
+// rateLimitError explains the anonymous limit and what raises it. The reset
+// time is omitted when GitHub did not send one.
+func rateLimitError(reset time.Time) error {
+	if reset.IsZero() {
+		return fmt.Errorf("%w: this server has used up GitHub's anonymous limit (60 calls an hour); a read-only token in the update settings raises it, or check again later", ErrRateLimited)
+	}
+	return fmt.Errorf("%w: this server has used up GitHub's anonymous limit (60 calls an hour), which resets at %s UTC; a read-only token in the update settings raises it", ErrRateLimited, reset.UTC().Format("15:04"))
 }
 
 // NormalizeTag strips a leading "v" so "v1.2.3" and "1.2.3" compare equal.

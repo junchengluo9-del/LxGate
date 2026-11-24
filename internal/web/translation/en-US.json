@@ -122,10 +122,7 @@
     "routing": "Routing",
     "outbounds": "Outbounds",
     "apiDocs": "API Docs",
-    "docs": "Documentation",
     "openMenu": "Open menu",
-    "pinSidebar": "Pin sidebar",
-    "unpinSidebar": "Unpin sidebar",
     "subFormats": "Sub Formats",
     "vpngate": "VPNGate Exit",
     "system": "System & Update",
@@ -323,10 +320,9 @@
       "xraySwitchAnyway": "Switch anyway",
       "currentExit": {
         "title": "Current exit",
-        "mode": "Takeover",
-        "connect": "Connect",
         "open": "Open VPNGate",
-        "country": "Switch country"
+        "noExit": "No exit is online right now",
+        "inbounds": "{count} inbounds"
       }
     },
     "inbounds": {
@@ -819,7 +815,8 @@
         "exitHint": "Saved with VPNGate, this inbound is added to the takeover rule and its clients leave through the tunnel.",
         "exitAllHint": "Takeover is set to \"All inbounds\", so every inbound already exits through VPNGate. Choosing Direct moves the others into \"Selected inbounds\" without this one.",
         "exitManualHint": "Takeover is manual. Saving with VPNGate switches it to \"Selected inbounds\" and adds this inbound.",
-        "exitApplyFailed": "Inbound saved, but the exit route was not applied: {msg}"
+        "exitApplyFailed": "Inbound saved, but the exit route was not applied: {msg}",
+        "exitSelectHint": "The inbound leaves through the chosen exit; \"Direct\" sends it out from this server without a tunnel. Each exit is a separate VPNGate tunnel with its own IP."
       },
       "info": {
         "mode": "Mode",
@@ -2580,11 +2577,11 @@
       "tiles": {
         "engine": "Engine",
         "exit": "Exit",
-        "proxy": "Local proxy",
         "xray": "Xray outbound",
-        "nodes": "{count} nodes cached",
-        "restarts": "{count} restarts",
-        "takeover": "Takeover"
+        "deviceLine": "{dev} · table {table}",
+        "boundInbounds": "Bound inbounds",
+        "boundInboundsFoot": "{total} inbounds in this panel",
+        "outboundFoot": "local port :{port}"
       },
       "routingTitle": "Routing",
       "mode": "Mode",
@@ -2592,8 +2589,6 @@
       "countryPlaceholder": "Pick a country",
       "ipType": "Exit IP type",
       "favFallback": "Fall back when favourites fail",
-      "applyRouting": "Apply routing",
-      "routingHint": "Switching modes or nodes keeps the local proxy port, so Xray outbounds pointing at vpngate-out never need a restart.",
       "modes": {
         "auto": "Auto",
         "fixed_region": "Country",
@@ -2623,17 +2618,6 @@
       "filterEmpty": "No node matches these filters",
       "filteredCount": "Showing {count} of {total} nodes",
       "filteredCountAll": "{total} nodes",
-      "routingFeedback": {
-        "anyPolicy": "any conditions",
-        "saved_policy_match": "Routing saved. Current node {node} still matches \"{policy}\", no switch needed.",
-        "saved_switching": "Routing saved. Current node no longer matches \"{policy}\", switching to {node} ({nodeType}).",
-        "saved_connecting": "Routing saved. Connecting to {node} ({nodeType}) for \"{policy}\".",
-        "saved_pending_switch": "Routing saved. Current node no longer matches \"{policy}\"; it will switch automatically once node checks finish.",
-        "saved_no_match_kept": "Routing saved, but no available node matches \"{policy}\" yet; keeping current node {node} and switching automatically when one appears.",
-        "saved_no_match": "Routing saved, but no available node matches \"{policy}\" yet.",
-        "saved_fixed_ip": "Routing saved. Fixed node mode follows the node you pinned, so country and IP type filters do not apply.",
-        "saved_disabled": "Routing saved ({policy}). Auto-connect is off, so the panel will not reconnect."
-      },
       "refreshNodes": "Refresh nodes",
       "refreshHint": "Fetch and speed-test fresh VPNGate candidates",
       "fullCheck": "Full check",
@@ -2646,12 +2630,6 @@
       "testSelected": "Test {count}",
       "logsTitle": "Live log",
       "logsEmpty": "No log entries for today yet.",
-      "xrayBindTitle": "Xray outbound",
-      "xrayBindHint": "Registers a socks outbound named vpngate-out pointing at the local proxy. Add routing rules against that tag to send selected traffic through VPNGate.",
-      "bindOutbound": "Register vpngate-out",
-      "rebindOutbound": "Rebind vpngate-out",
-      "unbindOutbound": "Remove outbound",
-      "notBound": "not bound",
       "columns": {
         "country": "Country",
         "ipType": "IP type",
@@ -2667,38 +2645,100 @@
         "disconnected": "Tunnel disconnected"
       },
       "takeover": {
-        "title": "Traffic takeover",
-        "hint": "Choose which inbounds leave the internet through the VPNGate exit. The panel keeps one routing rule and applies it to Xray for you — no JSON editing.",
-        "applied": "Takeover applied",
-        "apply": "Apply",
-        "selectAll": "Select all",
-        "clearAll": "Clear",
-        "selectedCount": "{count} of {total} inbounds",
         "inboundsEmpty": "No inbounds yet. Add an inbound first, then pick the ones that should exit through VPNGate.",
-        "modes": {
-          "all": "All inbounds",
-          "selected": "Selected inbounds",
-          "manual": "Manual routing only"
-        },
-        "hints": {
-          "all": "Every inbound on this panel exits through VPNGate. Private-network, DNS and panel API rules still take precedence, so the panel stays reachable.",
-          "selected": "Only the inbounds you tick below exit through VPNGate. Everything else keeps leaving directly from this server.",
-          "manual": "The panel adds no routing rule. Your own Xray routing stays exactly as you wrote it."
-        },
         "advanced": {
           "title": "Advanced technical settings",
           "proxy": "Local exit proxy",
           "device": "Tunnel device",
           "rule": "Managed rule",
           "engine": "Engine API"
-        }
+        },
+        "bindTitle": "Inbound binding",
+        "bindHint": "Check an inbound to send it out through “{name}”; clear it to send that inbound direct. A half-filled box means the global takeover rule already carries it here — click to make the binding explicit.",
+        "bindCount": "{bound} of {total} inbounds on this exit",
+        "bindAll": "Move all here",
+        "bindDirect": "All direct",
+        "boundToast": "Inbound now leaves through “{name}”",
+        "directToast": "Inbound now leaves direct",
+        "movedToast": "Moved {count} inbounds to “{name}”",
+        "freedToast": "Returned {count} inbounds to direct",
+        "onThisExit": "on this exit",
+        "currentlyOn": "currently: {name}",
+        "viaTakeover": "takeover · {name}",
+        "direct": "direct",
+        "fallbackNote": "Cleared inbounds fall back to the global takeover rule, which still sends them through “{name}”.",
+        "directNote": "Unbound inbounds go direct.",
+        "clearRule": "Make unbound direct",
+        "ruleCleared": "Takeover rule removed; unbound inbounds now go direct"
+      },
+      "exits": {
+        "title": "Residential exits",
+        "hint": "One exit per area: each has its own tunnel, policy table and local proxy port, and inbound ports pick exactly one of them.",
+        "create": "New exit",
+        "createTitle": "Create an exit",
+        "createHint": "The panel assigns a free tunnel device, policy table and loopback proxy port. Nothing connects until you say so.",
+        "namePlaceholder": "Exit {slot}",
+        "slot": "exit {slot}",
+        "memoryLine": "{active} of {configured} exits active · {available} MB free, {reserve} MB reserved for the system, ~{perTunnel} MB per tunnel",
+        "memoryOk": "Room for up to {count} active exits",
+        "memoryLow": "No memory for another tunnel",
+        "memoryWarnTitle": "This host cannot take another tunnel right now",
+        "memoryWarnBody": "Running exits keep working and are never stopped. Disconnect one, or add memory to the VPS, before activating another exit.",
+        "empty": "No exits yet",
+        "unavailable": "The exit list is unavailable while the engine is down",
+        "noNode": "No node connected",
+        "connectHint": "Connect this exit to the best node its own policy accepts, skipping nodes other exits use.",
+        "switchNode": "Change node",
+        "policy": "Policy",
+        "saved": "Exit saved",
+        "created": "Exit created",
+        "delete": "Delete",
+        "deleted": "\"{name}\" deleted; its inbounds go direct",
+        "deleteTitle": "Delete \"{name}\"?",
+        "deleteBody": "The tunnel stops, its Xray outbound and routing rule are removed, and the inbounds that used it fall back to direct. The default exit cannot be deleted.",
+        "policyHint": "Each exit has its own country, IP type and favourites policy; the node pool stays shared and a node is never used by two exits at once.",
+        "occupiedBy": "Already used by \"{name}\"",
+        "connectedToast": "Exit connected",
+        "select": "Select “{name}”",
+        "selectedHint": "Everything below is configuring “{name}”.",
+        "boundCount": "{count}/{total} inbounds",
+        "connectTo": "Connect to {name}",
+        "connectTarget": "This table connects nodes to “{name}”. Pick another exit card above to change the target.",
+        "disconnectHint": "Disconnect “{name}”",
+        "savePolicy": "Save policy",
+        "connectedSince": "connected since {time}"
+      },
+      "toUltra": "Switch to ultra-dark mode",
+      "exitsOnline": "{count} exits online",
+      "xrayStates": {
+        "running": "running",
+        "stop": "stopped",
+        "error": "error",
+        "unknown": "unknown"
+      },
+      "stages": {
+        "idle": "Idle",
+        "cleanup": "Closing the old tunnel",
+        "write": "Writing the node config",
+        "start": "Starting OpenVPN",
+        "route": "Configuring policy routing",
+        "probe": "Checking the exit",
+        "connected": "Connected",
+        "resolve": "Resolving the node host",
+        "link": "Reaching the node",
+        "tls": "TLS handshake",
+        "verify": "Verifying the certificate",
+        "negotiate": "Negotiating the tunnel",
+        "push": "Requesting the config",
+        "apply": "Applying the config",
+        "device": "Creating the tunnel device",
+        "ifconfig": "Configuring the tunnel device"
       }
     },
     "system": {
       "updateAvailable": "Update available",
       "updateAvailableHint": "LxGate v{version} is available",
       "upToDate": "Up to date",
-      "channel": "channel: {channel}",
       "latest": "latest v{version}",
       "checkAgain": "Check again",
       "updateNow": "Update now",
@@ -2729,22 +2769,26 @@
         "updateStarted": "Update started"
       },
       "updateSettingsTitle": "Update settings",
-      "updateSettingsHint": "LxGate publishes from a private repository. Save a read-only GitHub token here so the panel can read its releases and download updates.",
+      "updateSettingsHint": "LxGate publishes from a public repository, so the panel checks GitHub releases and downloads updates without a token. A read-only token is optional: it raises GitHub's anonymous API limit (60 checks an hour per server) and lets the panel follow a private fork.",
       "channelLabel": "Update channel",
       "channelHint": "Stable follows the newest published release. Dev follows the rolling build of the newest commit (dev-latest).",
       "channelStable": "Stable",
       "channelDev": "Dev",
       "channelSaved": "Update channel changed",
       "tokenLabel": "GitHub token",
-      "tokenHint": "A read-only token (contents: read) for the release repository. It is stored on this server and never shown in full again.",
+      "tokenHint": "Optional. A read-only token (contents: read) raises GitHub's rate limit and is required only for a private fork. It is stored on this server and never shown in full again.",
       "tokenPlaceholder": "ghp_… or github_pat_…",
       "tokenSaved": "GitHub token saved",
       "tokenConfigured": "Configured: {mask}",
-      "tokenNotConfigured": "No token configured",
+      "tokenNotConfigured": "No token configured (not needed)",
       "tokenSave": "Save token",
       "tokenClear": "Clear",
       "tokenCleared": "GitHub token cleared",
-      "tokenRequiredHint": "A private repository needs a token before the release check can work."
+      "checkFailedHint": "The release check failed — the reason is shown below.",
+      "notChecked": "Not checked"
+    },
+    "apiDocs": {
+      "websocketEvents": "WebSocket events"
     }
   },
   "tgbot": {

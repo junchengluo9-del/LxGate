@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button, Tooltip } from 'antd';
 import {
   CloudServerOutlined,
+  MoonFilled,
   MoonOutlined,
   SunOutlined,
   ThunderboltOutlined,
@@ -12,35 +13,13 @@ import {
 } from '@ant-design/icons';
 
 import { HttpUtil } from '@/utils';
-import { useTheme } from '@/hooks/useTheme';
+import { pauseAnimationsUntilLeave, useTheme } from '@/hooks/useTheme';
+import { useVpngateExitsQuery } from '@/api/queries/useVpngateExits';
 import './TopStatusBar.css';
 
 /** Xray state as /panel/api/server/status reports it. */
 interface ServerStatusSlice {
   xray?: { state?: string; version?: string };
-}
-
-/** Node entry as the embedded VPNGate engine reports it. */
-interface VpnGateNode {
-  id?: string;
-  country?: string;
-  country_short?: string;
-  latency_ms?: number;
-  ping?: number;
-  active?: boolean;
-}
-
-interface VpnGateNodesPayload {
-  nodes?: VpnGateNode[];
-  state?: {
-    active_openvpn_node_id?: string;
-    active_node_latency?: string | number;
-    is_connecting?: boolean;
-    proxy_ok?: boolean;
-    proxy_ip?: string;
-    proxy_latency_ms?: number;
-    connection_enabled?: boolean;
-  };
 }
 
 interface VersionPayload {
@@ -62,26 +41,12 @@ interface VersionPayload {
 export default function TopStatusBar() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, isUltra, toggleTheme, toggleUltra } = useTheme();
 
   const statusQuery = useQuery({
     queryKey: ['topbar', 'server-status'],
     queryFn: async (): Promise<ServerStatusSlice> => {
       const msg = await HttpUtil.get<ServerStatusSlice>('/panel/api/server/status', undefined, {
-        silent: true,
-      });
-      return msg?.success ? (msg.obj ?? {}) : {};
-    },
-    refetchInterval: 10_000,
-    refetchIntervalInBackground: false,
-    staleTime: 5_000,
-    retry: false,
-  });
-
-  const vpngateQuery = useQuery({
-    queryKey: ['topbar', 'vpngate'],
-    queryFn: async (): Promise<VpnGateNodesPayload> => {
-      const msg = await HttpUtil.get<VpnGateNodesPayload>('/panel/api/vpngate/nodes', undefined, {
         silent: true,
       });
       return msg?.success ? (msg.obj ?? {}) : {};
@@ -105,40 +70,76 @@ export default function TopStatusBar() {
     retry: false,
   });
 
+  // Multi-exit makes the legacy single-exit state the wrong source: it is
+  // cleared and rebuilt while the engine re-tests nodes, so a capsule fed from
+  // it read "idle" next to two live tunnels. The exit list is the truth, and
+  // this hook is the same cache entry Overview's 「Current exit」 card reads, so
+  // the two never disagree and the panel makes one poll instead of three.
+  const exitsQuery = useVpngateExitsQuery();
+
   const xrayRunning = statusQuery.data?.xray?.state === 'running';
-  const xrayState = statusQuery.data?.xray?.state ?? 'unknown';
+  // The capsule used to print the server's own "running" / "unknown" verbatim,
+  // so a Chinese panel showed English next to its translated VPNGate block.
+  const xrayState = statusQuery.data?.xray?.state || 'unknown';
+  const xrayLabel = t(`pages.vpngate.xrayStates.${xrayState}`, {
+    defaultValue: t('pages.vpngate.statusUnknown'),
+  });
 
   const exit = useMemo(() => {
-    const payload = vpngateQuery.data;
-    if (!payload) return { label: t('pages.vpngate.statusUnknown'), tone: 'warn' as const };
-    const state = payload.state ?? {};
-    const activeID = state.active_openvpn_node_id ?? '';
-    const nodes = payload.nodes ?? [];
-    const activeNode = nodes.find((node) => node.id === activeID);
-    if (state.is_connecting && !activeID) {
-      return { label: t('pages.vpngate.connecting'), tone: 'warn' as const };
+    const listed = exitsQuery.data?.exits ?? [];
+    if (exitsQuery.isPending) {
+      return { label: t('loading'), tone: 'warn' as const };
     }
-    if (!activeID) {
+    if (exitsQuery.isError && listed.length === 0) {
+      return { label: t('pages.vpngate.statusUnknown'), tone: 'bad' as const };
+    }
+    const live = listed.filter((item) => item.running);
+    if (live.length > 1) {
+      return { label: t('pages.vpngate.exitsOnline', { count: live.length }), tone: 'ok' as const };
+    }
+    if (live.length === 1) {
+      const only = live[0];
+      const country =
+        only.node?.country || only.node?.country_short || t('pages.vpngate.unknownCountry');
+      const latency = Number(only.latencyMs || only.node?.latency_ms || 0);
+      const suffix = latency > 0 ? ` · ${Math.round(latency)} ms` : '';
       return {
-        label: state.connection_enabled === false ? t('pages.vpngate.disconnected') : t('pages.vpngate.idle'),
-        tone: 'warn' as const,
+        label: `${country}${suffix}`,
+        tone: only.proxyOk === false ? ('bad' as const) : ('ok' as const),
       };
     }
-    const country = activeNode?.country || activeNode?.country_short || t('pages.vpngate.unknownCountry');
-    const latency = Number(
-      activeNode?.latency_ms || activeNode?.ping || state.active_node_latency || 0,
-    );
-    const suffix = latency > 0 ? ` · ${Math.round(latency)} ms` : '';
+    if (listed.some((item) => item.connecting)) {
+      return { label: t('pages.vpngate.connecting'), tone: 'warn' as const };
+    }
     return {
-      label: `${country}${suffix}`,
-      tone: state.proxy_ok === false ? ('bad' as const) : ('ok' as const),
+      label: listed.length > 0 ? t('pages.vpngate.disconnected') : t('pages.vpngate.idle'),
+      tone: 'warn' as const,
     };
-  }, [vpngateQuery.data, t]);
+  }, [exitsQuery.data, exitsQuery.isPending, exitsQuery.isError, t]);
 
   const updateAvailable = !!versionQuery.data?.updateAvailable;
   const latestVersion = versionQuery.data?.latestVersion ?? '';
 
-  const handleTheme = useCallback(() => toggleTheme(), [toggleTheme]);
+  // The panel's only theme switch: light → dark → ultra dark → light. The
+  // sidebar used to carry a second copy of this cycle; with that gone this
+  // button has to reach every palette, not just the two-way light/dark flip.
+  const handleTheme = useCallback(() => {
+    pauseAnimationsUntilLeave('topbar-theme');
+    if (!isDark) {
+      toggleTheme();
+    } else if (!isUltra) {
+      toggleUltra();
+    } else {
+      toggleUltra();
+      toggleTheme();
+    }
+  }, [isDark, isUltra, toggleTheme, toggleUltra]);
+
+  const themeLabel = isUltra
+    ? t('pages.vpngate.toLight')
+    : isDark
+      ? t('pages.vpngate.toUltra')
+      : t('pages.vpngate.toDark');
 
   return (
     <div className="lg-topbar" role="region" aria-label={t('pages.vpngate.statusCapsule')}>
@@ -152,7 +153,7 @@ export default function TopStatusBar() {
             <span className="lg-dot" aria-hidden />
             <CloudServerOutlined aria-hidden />
             <span className="lg-capsule-label">Xray</span>
-            <span className="lg-capsule-value">{xrayState}</span>
+            <span className="lg-capsule-value">{xrayLabel}</span>
           </button>
         </Tooltip>
 
@@ -171,11 +172,7 @@ export default function TopStatusBar() {
 
         {updateAvailable && (
           <Tooltip title={t('pages.system.updateAvailableHint', { version: latestVersion })}>
-            <button
-              type="button"
-              className="lg-capsule accent"
-              onClick={() => navigate('/system')}
-            >
+            <button type="button" className="lg-capsule accent" onClick={() => navigate('/system')}>
               <UploadOutlined aria-hidden />
               <span className="lg-capsule-value">
                 {latestVersion ? `v${latestVersion}` : t('pages.system.updateAvailable')}
@@ -186,12 +183,13 @@ export default function TopStatusBar() {
       </div>
 
       <div className="lg-topbar-group">
-        <Tooltip title={isDark ? t('pages.vpngate.toLight') : t('pages.vpngate.toDark')}>
+        <Tooltip title={themeLabel}>
           <Button
+            id="topbar-theme"
             type="text"
             className="lg-topbar-icon"
-            aria-label={isDark ? t('pages.vpngate.toLight') : t('pages.vpngate.toDark')}
-            icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+            aria-label={themeLabel}
+            icon={isUltra ? <SunOutlined /> : isDark ? <MoonFilled /> : <MoonOutlined />}
             onClick={handleTheme}
           />
         </Tooltip>

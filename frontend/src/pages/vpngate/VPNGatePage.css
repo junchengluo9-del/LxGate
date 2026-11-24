@@ -4,10 +4,8 @@
   padding: 24px;
 }
 
-.vg-page {
-  max-width: 1280px;
-  margin: 0 auto;
-}
+/* The content column itself is set once in styles/page-shell.css, so every page
+   shares one max width and the top bar no longer jumps between pages. */
 
 .vg-tiles {
   display: grid;
@@ -364,5 +362,353 @@
 
   .vpngate-page .vg-nodes .ant-card-extra {
     margin-left: 0;
+  }
+}
+
+/* ── Multi-exit panel ─────────────────────────────────────────────────────── */
+.vg-exits {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.vg-exits-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.vg-exits-head .lg-title {
+  margin: 0;
+}
+
+.vg-memory {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vg-memory-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--lg-text-dim) 18%, transparent);
+}
+
+.vg-memory-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #34d399, #22d3ee);
+  transition: width 0.4s ease;
+}
+
+.vg-memory.is-low .vg-memory-fill {
+  background: linear-gradient(90deg, #fbbf24, #f97316);
+}
+
+.vg-memory-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.vg-exit-grid {
+  display: grid;
+  /* auto-fit, not auto-fill: with two exits the cards share the row instead of
+     leaving an empty track on the right. */
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.vg-exit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--lg-text-dim) 16%, transparent);
+  background: color-mix(in srgb, var(--lg-surface, #fff) 68%, transparent);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  box-shadow: 0 10px 24px -18px rgba(15, 23, 42, 0.45);
+  min-width: 0;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.vg-exit-card:hover {
+  border-color: color-mix(in srgb, var(--lg-accent) 38%, transparent);
+}
+
+/* The selected card is the page's subject: a stronger ring plus lift, so it
+   stays obvious which exit every panel below belongs to. */
+.vg-exit-card.is-selected {
+  border-color: var(--lg-accent);
+  box-shadow:
+    0 0 0 1px var(--lg-accent),
+    0 16px 34px -22px color-mix(in srgb, var(--lg-accent) 60%, transparent);
+}
+
+.vg-exit-card.is-selected.busy {
+  border-color: var(--lg-accent);
+}
+
+.vg-exit-card.on {
+  border-color: color-mix(in srgb, #22c55e 42%, transparent);
+}
+
+.vg-exit-card.is-selected.on {
+  border-color: var(--lg-accent);
+}
+
+.vg-exit-card.busy {
+  border-color: color-mix(in srgb, #f59e0b 45%, transparent);
+}
+
+.vg-exit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.vg-exit-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The name doubles as the selection control: a radio dot for the unselected
+   cards, a check for the selected one. */
+.vg-exit-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.vg-exit-pick:focus-visible {
+  outline: 2px solid var(--lg-accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.vg-exit-pick-dot {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--lg-text-dim) 55%, transparent);
+}
+
+.vg-exit-pick-icon {
+  font-size: 14px;
+  color: var(--lg-accent);
+  flex: 0 0 auto;
+}
+
+.vg-exit-selected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--lg-accent);
+}
+
+.vg-exit-selected .anticon {
+  font-size: 13px;
+}
+.vg-exit-name {
+  font-weight: 650;
+  color: var(--lg-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vg-exit-slot {
+  margin: 0;
+  font-size: 0.7rem;
+}
+
+.vg-exit-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.86rem;
+  color: var(--lg-text);
+  min-width: 0;
+}
+
+.vg-exit-node .lg-mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* One line, always present: an offline exit has nothing to say, but the row
+   still holds its height so the cards' node rows and buttons stay level. */
+.vg-exit-stage {
+  margin: 0;
+  min-height: 1.45em;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vg-exit-stage.is-error {
+  color: color-mix(in srgb, #ef4444 78%, var(--lg-text));
+}
+
+.vg-exit-tech {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  color: var(--lg-text-dim);
+  opacity: 0.9;
+}
+
+/* The buttons sit on the card's bottom edge, so a card whose status line is
+   longer still lines its actions up with its neighbours'. */
+.vg-exit-actions {
+  margin-top: auto;
+}
+
+.vg-exit-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.vg-node-owner {
+  margin: 0;
+}
+
+/* Dark and ultra-dark: keep the same glass, one step lighter than the page so
+   the cards read as raised surfaces instead of gaps in the layout. */
+.vpngate-page.is-dark .vg-exit-card {
+  background: color-mix(in srgb, #0f172a 62%, transparent);
+  border-color: color-mix(in srgb, #cbd5f5 14%, transparent);
+  box-shadow: 0 12px 28px -22px rgba(0, 0, 0, 0.9);
+}
+
+.vpngate-page.is-ultra .vg-exit-card {
+  background: color-mix(in srgb, #090b10 72%, transparent);
+  border-color: color-mix(in srgb, #cbd5f5 12%, transparent);
+}
+
+@media (max-width: 768px) {
+  .vg-exit-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vg-exits-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* ---------- selected-exit binding panel, tiles and node target ---------- */
+
+.vg-card-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.vg-card-title-target {
+  color: var(--lg-accent);
+}
+
+.vg-bind-hint {
+  margin: 0 0 14px;
+}
+
+.vg-inbound-item.is-other {
+  border-style: dashed;
+}
+
+.vg-bind-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--lg-border);
+}
+
+.vg-bind-foot .lg-subtitle {
+  margin: 0;
+}
+
+.vg-tile-count {
+  font-size: 1rem;
+}
+
+.vg-nodes-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--lg-accent) 26%, transparent);
+  background: color-mix(in srgb, var(--lg-accent) 8%, transparent);
+  font-size: 0.8rem;
+  color: var(--lg-text);
+}
+
+.vg-nodes-target .anticon {
+  color: var(--lg-accent);
+}
+
+/* "Policy" on a card walks the eye down to this card; the ring says where it
+   landed without moving the focus away from the controls. The sticky status
+   capsule sits above the scroll, so the card keeps its title clear of it. */
+.vg-routing {
+  scroll-margin-top: 96px;
+}
+
+.vg-routing.is-flash {
+  animation: vg-routing-flash 1.3s ease-out;
+}
+
+@keyframes vg-routing-flash {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--lg-accent) 55%, transparent);
+  }
+  35% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--lg-accent) 32%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
   }
 }

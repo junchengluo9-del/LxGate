@@ -60,10 +60,8 @@
   background: var(--ant-color-fill-secondary);
 }
 
-.client-traffic-cell.is-unlimited .client-traffic-cell-bar .ant-progress-inner .ant-progress-bg {
-  background-color: color-mix(in srgb, #722ed1 35%, transparent);
-  border: 1px solid color-mix(in srgb, #722ed1 55%, transparent);
-}
+/* Unlimited clients draw no fill at all (percent 0); the ∞ icon in the limit
+   column says it, and a bordered fill at 0% left a stray dot on the track. */
 
 .client-traffic-cell-infinity {
   display: inline-flex;

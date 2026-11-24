@@ -90,11 +90,13 @@ fi
 # The IP lookups use plain curl so they still report this server's own address.
 [[ -n "${XUI_UPDATE_PROXY}" ]] && curl_bin="${curl_bin} --proxy ${XUI_UPDATE_PROXY}"
 
-# >>> private release repository support >>>
-# LxGate's release repository is private. The panel stores a read-only token in
-# its update settings and hands it over both in the environment and as a
-# 0600 file beside the database, because the panel's detached update process
-# does not always inherit the panel's environment.
+# >>> release repository support >>>
+# LxGate's release repository is public, so every download here works without a
+# credential. An operator can still save a read-only token in the panel's update
+# settings (for GitHub's anonymous API limit, or to read a private fork); when
+# there is one the panel hands it over both in the environment and as a 0600 file
+# beside the database, because the panel's detached update process does not
+# always inherit the panel's environment.
 github_token="${XUI_GITHUB_TOKEN:-}"
 if [[ -z "${github_token}" ]]; then
     github_token_file="${XUI_GITHUB_TOKEN_FILE:-/etc/lxgate/github-token}"
@@ -123,9 +125,9 @@ _json_asset_id() {
 
 # _download_release_asset <tag> <asset-name> <dest>
 # With a token the asset is resolved through the API and fetched as
-# application/octet-stream, which is the documented way to download from a
-# private repository; the public web download URL answers 404 there. Without a
-# token (a public fork, or an older install) the web URL is used as before.
+# application/octet-stream, which is what a private fork needs; the public web
+# download URL answers 404 there. Without a token (the usual case for this public
+# repository) the web URL is used as before.
 _download_release_asset() {
     local tag="$1" name="$2" dest="$3" asset_id rc
     rm -f "${dest}"
@@ -147,8 +149,8 @@ _download_release_asset() {
 }
 
 # _fetch_repo_file <ref> <path> <dest> writes one repository file to dest.
-# The raw host cannot serve a private repository, so a token switches the fetch
-# to the contents API with the raw media type.
+# The raw host serves this public repository directly; a token switches the fetch
+# to the contents API with the raw media type, which a private fork needs.
 _fetch_repo_file() {
     local ref="$1" path="$2" dest="$3"
     if [[ -n "${github_token}" ]]; then
@@ -167,7 +169,7 @@ _repo_file_status() {
     fi
     ${curl_bin} -sIL --retry 3 --connect-timeout 15 -o /dev/null -w '%{http_code}' "${LXGATE_RAW_BASE}/${ref}/${path}"
 }
-# <<< private release repository support <<<
+# <<< release repository support <<<
 
 # Check OS and set release variable
 if [[ -f /etc/os-release ]]; then
@@ -398,6 +400,43 @@ require_writable_update_paths() {
         fi
         rm -f "$probe"
     done
+}
+
+# install_vpngate_engine <dir-with-the-new-lxgate>
+#
+# The release archive ships the VPNGate engine as vpngate/*.py next to the
+# binary. Copying it here keeps /opt/lxgate/vpngate in step with the binary this
+# update installed -- the archive is the panel's own build, so the engine and the
+# supervisor can never drift apart. Nothing here is fatal: the panel embeds the
+# engine in its binary and writes it into that directory on its next start, which
+# also covers a release built without vpngate/ and a copy that fails here.
+install_vpngate_engine() {
+    local src="${1}/vpngate" dest="/opt/lxgate/vpngate" f installed=0
+    if [[ ! -f "${src}/vpngate_manager.py" ]]; then
+        echo -e "${yellow}The release archive ships no vpngate/ directory; the panel writes the engine it embeds into ${dest} on its next start${plain}"
+        return 0
+    fi
+    if ! mkdir -p "${dest}" 2> /dev/null; then
+        echo -e "${yellow}Could not create ${dest}; the panel writes the engine it embeds there on its next start${plain}"
+        return 0
+    fi
+    for f in vpngate_manager.py proxy_server.py vpn_utils.py; do
+        if [[ ! -f "${src}/${f}" ]]; then
+            echo -e "${yellow}${src}/${f} is missing; the panel writes the engine it embeds into ${dest} on its next start${plain}"
+            continue
+        fi
+        if cp -f "${src}/${f}" "${dest}/${f}.tmp.$$" 2> /dev/null && mv -f "${dest}/${f}.tmp.$$" "${dest}/${f}"; then
+            chmod 644 "${dest}/${f}" 2> /dev/null || true
+            installed=1
+        else
+            rm -f "${dest}/${f}.tmp.$$"
+            echo -e "${yellow}Could not copy ${f} to ${dest}; the panel writes the engine it embeds there on its next start${plain}"
+        fi
+    done
+    if [[ "${installed}" == "1" ]]; then
+        echo -e "${green}VPNGate engine updated in ${dest}${plain}"
+    fi
+    return 0
 }
 
 # Major version of the local systemd, 0 when it cannot be determined. The
@@ -814,6 +853,10 @@ update_lxgate() {
     elif [[ -f bin/mtg-linux-$(arch) ]]; then
         chmod +x bin/mtg-linux-$(arch) > /dev/null 2>&1
     fi
+
+    # The archive's vpngate/ directory is the engine this binary supervises.
+    echo -e "${green}Installing VPNGate engine...${plain}"
+    install_vpngate_engine "${xui_folder}"
 
     # The archive's lxgate.sh is built from the same commit as the binary.
     echo -e "${green}Installing lxgate.sh script...${plain}"
