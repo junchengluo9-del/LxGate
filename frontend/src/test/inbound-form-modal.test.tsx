@@ -6,9 +6,11 @@ import { DBInbound } from '@/models/dbinbound';
 import { ThemeProvider } from '@/hooks/useTheme';
 import { AntdRootConfig } from '@/i18n/AntdRootConfig';
 import { HttpUtil } from '@/utils';
+import { QueryClientProvider } from '@tanstack/react-query';
 
 import {
   renderWithProviders,
+  makeTestQueryClient,
   fieldLabels,
   listSelectOptions,
   chooseSelectOption,
@@ -85,6 +87,23 @@ function cloneLikeVlessInbound(target: string) {
     nodeId: null,
     shareAddrStrategy: 'listen',
     shareAddr: '',
+  });
+}
+
+/**
+ * Answer the fallbacks endpoint with stored rows. A one-shot mockResolvedValueOnce
+ * is not enough: the modal also loads the VPNGate exit/takeover state through
+ * HttpUtil.get, and whichever request runs first would swallow the stored rows.
+ */
+function mockStoredFallbacks(rows: Array<Record<string, unknown>>) {
+  const get = vi.mocked(HttpUtil.get);
+  const fallback = get.getMockImplementation();
+  get.mockImplementation(async (url: string, ...rest: unknown[]) => {
+    if (url.endsWith('/fallbacks')) return { success: true, msg: '', obj: rows } as never;
+    return (fallback as (...a: unknown[]) => Promise<unknown>)(url, ...rest) as never;
+  });
+  onTestFinished(() => {
+    if (fallback) get.mockImplementation(fallback);
   });
 }
 
@@ -227,21 +246,24 @@ describe('InboundFormModal', () => {
       within(screen.getByRole('combobox', { name: 'Share address strategy' })).getByRole('option', {
         selected: true,
       }).textContent;
+    const queryClient = makeTestQueryClient();
     const modal = (nodes: never[], fetched: boolean) => (
-      <AntdRootConfig>
-        <ThemeProvider>
-          <InboundFormModal
-            open
-            mode="edit"
-            dbInbound={buildInbound()}
-            dbInbounds={[]}
-            availableNodes={nodes}
-            availableNodesFetched={fetched}
-            onClose={() => {}}
-            onSaved={() => {}}
-          />
-        </ThemeProvider>
-      </AntdRootConfig>
+      <QueryClientProvider client={queryClient}>
+        <AntdRootConfig>
+          <ThemeProvider>
+            <InboundFormModal
+              open
+              mode="edit"
+              dbInbound={buildInbound()}
+              dbInbounds={[]}
+              availableNodes={nodes}
+              availableNodesFetched={fetched}
+              onClose={() => {}}
+              onSaved={() => {}}
+            />
+          </ThemeProvider>
+        </AntdRootConfig>
+      </QueryClientProvider>
     );
 
     // Baseline: nodes already loaded, so the node option is offered and selected.
@@ -570,11 +592,7 @@ describe('InboundFormModal', () => {
 
 describe('VLESS fallback safety', () => {
   it('disables adding fallbacks with server decryption and keeps removal available', async () => {
-    vi.mocked(HttpUtil.get).mockResolvedValueOnce({
-      success: true,
-      msg: '',
-      obj: [{ dest: '8080' }],
-    });
+    mockStoredFallbacks([{ dest: '8080' }]);
     const inbound = cloneLikeVlessInbound('example.com:443');
     inbound.settings = {
       clients: [],
@@ -626,11 +644,7 @@ describe('VLESS fallback safety', () => {
   });
 
   it('removes legacy managed rules before saving active decryption', async () => {
-    vi.mocked(HttpUtil.get).mockResolvedValueOnce({
-      success: true,
-      msg: '',
-      obj: [{ dest: '8080' }],
-    });
+    mockStoredFallbacks([{ dest: '8080' }]);
     const post = vi.mocked(HttpUtil.post);
     post.mockClear();
     const inbound = cloneLikeVlessInbound('example.com:443');
