@@ -91,13 +91,19 @@ func TestIsNewer(t *testing.T) {
 	}
 }
 
-func TestReleaseChannelSelectsEndpoint(t *testing.T) {
+func TestLatestAvailableFallsBackToDevLatest(t *testing.T) {
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
+		if strings.HasSuffix(r.URL.Path, "/releases/latest") {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tag_name":     "dev-latest",
 			"name":         "Dev build",
+			"body":         "commit=abcdef1234567890",
 			"prerelease":   true,
 			"published_at": "2026-11-17T03:12:11Z",
 		})
@@ -107,15 +113,15 @@ func TestReleaseChannelSelectsEndpoint(t *testing.T) {
 	client := NewClient("junchengluo9-del/LxGate")
 	client.SetBaseURL(server.URL)
 
-	if _, err := client.Release(context.Background(), "stable"); err != nil {
-		t.Fatalf("stable: %v", err)
-	}
-	dev, err := client.Release(context.Background(), "dev")
+	info, channel, err := client.LatestAvailable(context.Background())
 	if err != nil {
-		t.Fatalf("dev: %v", err)
+		t.Fatalf("latest available: %v", err)
 	}
-	if !dev.Prerelease {
-		t.Fatal("the dev release must keep its prerelease flag")
+	if channel != ChannelDev {
+		t.Fatalf("channel = %q, want dev", channel)
+	}
+	if info.TagName != DevTag || !info.Prerelease {
+		t.Fatalf("info = %#v", info)
 	}
 	want := []string{
 		"/repos/junchengluo9-del/LxGate/releases/latest",
@@ -128,6 +134,60 @@ func TestReleaseChannelSelectsEndpoint(t *testing.T) {
 		if paths[i] != want[i] {
 			t.Fatalf("paths = %v, want %v", paths, want)
 		}
+	}
+}
+
+func TestLatestAvailablePrefersStableRelease(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		_ = json.NewEncoder(w).Encode(map[string]any{"tag_name": "v1.4.0", "name": "LxGate 1.4.0"})
+	}))
+	defer server.Close()
+
+	client := NewClient("junchengluo9-del/LxGate")
+	client.SetBaseURL(server.URL)
+
+	info, channel, err := client.LatestAvailable(context.Background())
+	if err != nil {
+		t.Fatalf("latest available: %v", err)
+	}
+	if channel != ChannelStable || info.TagName != "v1.4.0" {
+		t.Fatalf("channel = %q, info = %#v", channel, info)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("a stable release must be used without a fallback call, paths = %v", paths)
+	}
+}
+
+func TestLatestAvailableWithoutAnyRelease(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := NewClient("junchengluo9-del/LxGate")
+	client.SetBaseURL(server.URL)
+
+	_, _, err := client.LatestAvailable(context.Background())
+	if !errors.Is(err, ErrNoRelease) {
+		t.Fatalf("want ErrNoRelease, got %v", err)
+	}
+}
+
+func TestLatestAvailableKeepsRateLimitError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-RateLimit-Remaining", "0")
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	client := NewClient("junchengluo9-del/LxGate")
+	client.SetBaseURL(server.URL)
+
+	_, _, err := client.LatestAvailable(context.Background())
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("a limited call must not be answered from dev-latest, got %v", err)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/release"
 
@@ -307,12 +308,18 @@ func TestSystemVersionReportsRateLimitWithoutToken(t *testing.T) {
 	}
 }
 
-// The dev channel asks for the rolling dev-latest tag, and the tag's commit is
-// what decides whether an update is available.
-func TestSystemVersionDevChannelReadsDevLatest(t *testing.T) {
-	var gotPath string
-	router, controller := newSystemDBTestRouter(t, func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
+// A repository with no stable release still offers an update: the check falls
+// back to the rolling dev-latest pre-release, whose commit decides whether an
+// update is available. No setting has to be switched for this.
+func TestSystemVersionFallsBackToDevLatest(t *testing.T) {
+	var paths []string
+	router, _ := newSystemTestRouter(t, func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if strings.HasSuffix(r.URL.Path, "/releases/latest") {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tag_name":     "dev-latest",
 			"name":         "Dev build",
@@ -320,10 +327,7 @@ func TestSystemVersionDevChannelReadsDevLatest(t *testing.T) {
 			"prerelease":   true,
 			"published_at": "2026-11-17T03:12:11Z",
 		})
-	})
-	if err := controller.settingService.SetUpdateChannel("dev"); err != nil {
-		t.Fatalf("set channel: %v", err)
-	}
+	}, false)
 
 	rec := doSystemJSON(t, router, http.MethodGet, "/panel/api/system/version", "")
 	var payload struct {
@@ -334,35 +338,100 @@ func TestSystemVersionDevChannelReadsDevLatest(t *testing.T) {
 			LatestCommit    string `json:"latestCommit"`
 			UpdateAvailable bool   `json:"updateAvailable"`
 			Prerelease      bool   `json:"prerelease"`
+			CheckError      string `json:"checkError"`
 		} `json:"obj"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if !strings.HasSuffix(gotPath, "/releases/tags/dev-latest") {
-		t.Fatalf("dev channel must read the rolling pre-release, path = %q", gotPath)
+	if payload.Obj.CheckError != "" {
+		t.Fatalf("a dev-latest fallback is not an error: %q", payload.Obj.CheckError)
 	}
 	if payload.Obj.Channel != "dev" || !payload.Obj.Prerelease {
 		t.Fatalf("obj = %#v", payload.Obj)
 	}
-	if payload.Obj.LatestCommit != "abcdef12" {
-		t.Fatalf("latestCommit = %q", payload.Obj.LatestCommit)
+	if payload.Obj.LatestCommit != "abcdef12" || payload.Obj.LatestVersion != "dev+abcdef12" {
+		t.Fatalf("obj = %#v", payload.Obj)
 	}
 	if !payload.Obj.UpdateAvailable {
 		t.Fatal("a build without a matching commit must see the dev release as an update")
 	}
+	want := []string{
+		"/repos/junchengluo9-del/LxGate/releases/latest",
+		"/repos/junchengluo9-del/LxGate/releases/tags/dev-latest",
+	}
+	if len(paths) != len(want) {
+		t.Fatalf("paths = %v", paths)
+	}
+	for i := range want {
+		if paths[i] != want[i] {
+			t.Fatalf("paths = %v, want %v", paths, want)
+		}
+	}
+}
+
+// One answer serves every page load for five minutes, a forced check inside the
+// debounce reuses it too, and a forced check after the debounce asks GitHub
+// again -- that is what keeps a reloaded page from spending the anonymous
+// 60-calls-an-hour limit.
+func TestSystemVersionReusesRecentAnswer(t *testing.T) {
+	var calls int
+	router, controller := newSystemTestRouter(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tag_name":     "v9.9.9",
+			"name":         "LxGate 9.9.9",
+			"published_at": "2026-11-10T08:00:00Z",
+		})
+	}, false)
+
+	doSystemJSON(t, router, http.MethodGet, "/panel/api/system/version", "")
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+	doSystemJSON(t, router, http.MethodGet, "/panel/api/system/version", "")
+	if calls != 1 {
+		t.Fatalf("a plain reload must reuse the answer, calls = %d", calls)
+	}
+	doSystemJSON(t, router, http.MethodGet, "/panel/api/system/version?refresh=1", "")
+	if calls != 1 {
+		t.Fatalf("a forced check inside the debounce must reuse the answer, calls = %d", calls)
+	}
+
+	// Past the debounce but inside the TTL: the button does reach GitHub.
+	controller.checkMu.Lock()
+	controller.lastAnswer.at = time.Now().Add(-time.Minute)
+	controller.checkMu.Unlock()
+	doSystemJSON(t, router, http.MethodGet, "/panel/api/system/version?refresh=1", "")
+	if calls != 2 {
+		t.Fatalf("a forced check must refetch, calls = %d", calls)
+	}
+
+	// And a page load straight after still reuses that new answer.
+	doSystemJSON(t, router, http.MethodGet, "/panel/api/system/version", "")
+	if calls != 2 {
+		t.Fatalf("calls = %d, want 2", calls)
+	}
+
+	// Past the TTL the next page load checks again by itself.
+	controller.checkMu.Lock()
+	controller.lastAnswer.at = time.Now().Add(-releaseCheckTTL - time.Minute)
+	controller.checkMu.Unlock()
+	doSystemJSON(t, router, http.MethodGet, "/panel/api/system/version", "")
+	if calls != 3 {
+		t.Fatalf("a stale answer must be refreshed, calls = %d", calls)
+	}
 }
 
 // The settings endpoint stores the channel and the token, masks the token in its
-// answer, and sends the token to GitHub on the next check.
+// answer, and clears it on request. It is kept for older clients: the version
+// check no longer needs, or sends, a token on a public repository.
 func TestSystemUpdateSettingsRoundTrip(t *testing.T) {
 	var gotAuth string
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GITHUB_API_TOKEN", "")
 	router, controller := newSystemDBTestRouter(t, func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
-		if gotAuth == "" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tag_name": "v9.9.9",
 			"name":     "LxGate 9.9.9",
@@ -394,10 +463,11 @@ func TestSystemUpdateSettingsRoundTrip(t *testing.T) {
 		t.Fatal("the updater's token file must exist for the native updater")
 	}
 
-	// A check now authenticates with the stored token.
+	// A check no longer authenticates: the public repository needs no token,
+	// and a stale token stored earlier must not break the check.
 	rec = doSystemJSON(t, router, http.MethodGet, "/panel/api/system/version", "")
-	if gotAuth != "Bearer ghp_secret_value_1234" {
-		t.Fatalf("Authorization = %q", gotAuth)
+	if gotAuth != "" {
+		t.Fatalf("the version check must be anonymous, Authorization = %q", gotAuth)
 	}
 
 	// An empty token in a later save keeps the stored one (the form never sees

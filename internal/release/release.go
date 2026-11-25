@@ -8,6 +8,8 @@
 // checking every 15 minutes shares with anything else on the host) and lets a
 // panel follow a private fork. When one is set it comes from the panel settings
 // (or GITHUB_TOKEN/GITHUB_API_TOKEN in the environment) and is never logged.
+// The panel itself reuses a recent answer for a few minutes (see
+// SystemController), so a reloaded page does not spend the limit.
 package release
 
 import (
@@ -31,13 +33,16 @@ const DefaultTimeout = 12 * time.Second
 // large, and the cap keeps a misbehaving proxy from exhausting memory.
 const maxBodyBytes = 2 << 20
 
-// Channels the panel can track. Stable follows the newest published release;
-// dev follows the rolling dev-latest pre-release the CI force-moves on every
-// main commit.
+// The two kinds of release the panel can end up reading. The panel no longer
+// asks the operator to choose one: LatestAvailable tries the newest stable
+// release and falls back to the rolling dev-latest pre-release when the
+// repository has none. The names stay because the resolved channel is reported
+// to the UI and older settings still store one.
 const (
 	ChannelStable = "stable"
 	ChannelDev    = "dev"
-	// DevTag is the fixed tag of the rolling pre-release.
+	// DevTag is the fixed tag of the rolling pre-release the CI force-moves on
+	// every main commit.
 	DevTag = "dev-latest"
 )
 
@@ -115,12 +120,30 @@ func (c *Client) WithToken(token string) *Client {
 	return &clone
 }
 
-// Release fetches the release for a channel ("stable" or "dev").
-func (c *Client) Release(ctx context.Context, channel string) (*Info, error) {
-	if NormalizeChannel(channel) == ChannelDev {
-		return c.ByTag(ctx, DevTag)
+// LatestAvailable fetches the release to offer the panel, and which channel it
+// came from. It asks for the newest stable release first; when the repository
+// has published none, GitHub answers 404 and the rolling dev-latest pre-release
+// is used instead, so a repository that only ships main builds still offers an
+// update rather than reporting "no release". A 404 from both endpoints means
+// nothing has been published at all, and that is reported as such.
+func (c *Client) LatestAvailable(ctx context.Context) (*Info, string, error) {
+	info, err := c.Latest(ctx)
+	if err == nil {
+		return info, ChannelStable, nil
 	}
-	return c.Latest(ctx)
+	if !errors.Is(err, ErrNoRelease) {
+		return nil, "", err
+	}
+	devInfo, devErr := c.ByTag(ctx, DevTag)
+	if devErr == nil {
+		return devInfo, ChannelDev, nil
+	}
+	if errors.Is(devErr, ErrNoRelease) {
+		// Neither endpoint has anything: keep the stable wording, which is what
+		// an operator publishing their first release will fix.
+		return nil, "", err
+	}
+	return nil, "", devErr
 }
 
 // Latest fetches the newest published, non-prerelease release.
@@ -259,12 +282,13 @@ func rateLimited(resp *http.Response) (bool, time.Time) {
 }
 
 // rateLimitError explains the anonymous limit and what raises it. The reset
-// time is omitted when GitHub did not send one.
+// time is omitted when GitHub did not send one. The panel keeps a recent answer
+// for a few minutes, so in practice the message clears itself.
 func rateLimitError(reset time.Time) error {
 	if reset.IsZero() {
-		return fmt.Errorf("%w: this server has used up GitHub's anonymous limit (60 calls an hour); a read-only token in the update settings raises it, or check again later", ErrRateLimited)
+		return fmt.Errorf("%w: this server has used up GitHub's anonymous limit (60 calls an hour); the panel keeps its last answer for a few minutes, so this clears up on its own, or try again later", ErrRateLimited)
 	}
-	return fmt.Errorf("%w: this server has used up GitHub's anonymous limit (60 calls an hour), which resets at %s UTC; a read-only token in the update settings raises it", ErrRateLimited, reset.UTC().Format("15:04"))
+	return fmt.Errorf("%w: this server has used up GitHub's anonymous limit (60 calls an hour), which resets at %s UTC; the panel keeps its last answer for a few minutes", ErrRateLimited, reset.UTC().Format("15:04"))
 }
 
 // NormalizeTag strips a leading "v" so "v1.2.3" and "1.2.3" compare equal.

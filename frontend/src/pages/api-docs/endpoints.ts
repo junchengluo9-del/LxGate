@@ -3205,31 +3205,31 @@ export const sections: readonly Section[] = [
     id: 'system',
     title: 'System & Update',
     description:
-      'In-app version check and update trigger. The version check reads GitHub Releases of the release repository; the update either starts the native updater (binary replaced, database and vpngate_data preserved) or returns the docker compose command for container deployments.',
+      'In-app version check and update trigger. The version check reads GitHub Releases of the public release repository with no credential: it offers the newest published release and, while the repository has none, the rolling dev-latest build. One answer is reused for five minutes. The update either starts the native updater (binary replaced, database and vpngate_data preserved) or returns the docker compose command for container deployments.',
     endpoints: [
       {
         method: 'GET',
         path: '/panel/api/system/version',
         summary:
-          'Current and latest version, changelog, release URL, deployment mode (isDocker / canSelfUpdate) and the update command when containerised. A failed GitHub call is reported in checkError instead of failing the request.',
+          'Current and latest version, changelog, release URL, deployment mode (isDocker / canSelfUpdate) and the update command when containerised. The answer is cached for five minutes; refresh=1 asks for a new check (still debounced). A failed GitHub call is reported in checkError instead of failing the request.',
       },
       {
         method: 'POST',
         path: '/panel/api/system/update',
         summary:
-          'Start an update. Docker mode answers with the docker compose command and started=false; native mode starts the updater and returns runId.',
+          'Start an update. Docker mode answers with the docker compose command and started=false; native mode starts the updater and returns runId. The updater installs the release the version check resolved.',
       },
       {
         method: 'GET',
         path: '/panel/api/system/update-settings',
         summary:
-          'Update channel (stable / dev) and whether a read-only GitHub token is stored. The token itself is never returned: only hasGithubToken and a masked hint.',
+          'Legacy: the channel an earlier version stored and whether a read-only GitHub token is stored. The panel no longer reads either, and the token itself is never returned (only hasGithubToken and a masked hint).',
       },
       {
         method: 'POST',
         path: '/panel/api/system/update-settings',
         summary:
-          'Save the update channel and/or the optional read-only GitHub token (raises the anonymous API limit, needed for private forks). clearGithubToken removes a stored token.',
+          'Legacy: store an update channel and/or a read-only GitHub token. Kept for older clients; the panel itself needs neither for this public repository. clearGithubToken removes a stored token.',
         params: [
           {
             name: 'channel',

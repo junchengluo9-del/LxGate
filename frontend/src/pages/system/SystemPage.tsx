@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
@@ -11,7 +11,6 @@ import {
   Layout,
   Progress,
   Result,
-  Segmented,
   Space,
   Tag,
   Tooltip,
@@ -23,9 +22,7 @@ import {
   CodeOutlined,
   CopyOutlined,
   GithubOutlined,
-  KeyOutlined,
   ReloadOutlined,
-  SaveOutlined,
 } from '@ant-design/icons';
 
 import { ClipboardManager, HttpUtil } from '@/utils';
@@ -38,7 +35,6 @@ import './SystemPage.css';
 
 interface VersionPayload {
   currentVersion?: string;
-  channel?: string;
   latestVersion?: string;
   updateAvailable?: boolean;
   changelog?: string;
@@ -78,13 +74,6 @@ interface UpdateResult {
   preserveData?: string[];
 }
 
-interface UpdateSettingsPayload {
-  channel?: string;
-  hasGithubToken?: boolean;
-  githubTokenMasked?: string;
-  tokenFileInPlace?: boolean;
-}
-
 interface UpdateStatus {
   state?: string;
   runId?: string;
@@ -102,13 +91,20 @@ export default function SystemPage() {
   }, [messageApi]);
 
   const [updateRunId, setUpdateRunId] = useState('');
+  // A plain page load reuses the panel's cached answer; only the "Check again"
+  // button asks GitHub for a fresh one (the panel still debounces that).
+  const forceRefresh = useRef(false);
 
   const versionQuery = useQuery({
     queryKey: ['system', 'version'],
     queryFn: async (): Promise<VersionPayload> => {
-      const msg = await HttpUtil.get<VersionPayload>('/panel/api/system/version', undefined, {
-        silent: true,
-      });
+      const refresh = forceRefresh.current;
+      forceRefresh.current = false;
+      const msg = await HttpUtil.get<VersionPayload>(
+        '/panel/api/system/version',
+        refresh ? { refresh: 1 } : undefined,
+        { silent: true },
+      );
       if (!msg?.success) throw new Error(msg?.msg || 'version check failed');
       return msg.obj ?? {};
     },
@@ -116,6 +112,11 @@ export default function SystemPage() {
     refetchIntervalInBackground: false,
     retry: false,
   });
+
+  const checkNow = useCallback(() => {
+    forceRefresh.current = true;
+    void versionQuery.refetch();
+  }, [versionQuery.refetch]);
 
   const infoQuery = useQuery({
     queryKey: ['system', 'info'],
@@ -126,21 +127,6 @@ export default function SystemPage() {
       return msg?.success ? (msg.obj ?? {}) : {};
     },
     staleTime: Infinity,
-    retry: false,
-  });
-
-  const settingsQuery = useQuery({
-    queryKey: ['system', 'update-settings'],
-    queryFn: async (): Promise<UpdateSettingsPayload> => {
-      const msg = await HttpUtil.get<UpdateSettingsPayload>(
-        '/panel/api/system/update-settings',
-        undefined,
-        {
-          silent: true,
-        },
-      );
-      return msg?.success ? (msg.obj ?? {}) : {};
-    },
     retry: false,
   });
 
@@ -155,43 +141,6 @@ export default function SystemPage() {
     enabled: !!updateRunId,
     refetchInterval: 5000,
     retry: false,
-  });
-
-  const [channelDraft, setChannelDraft] = useState('stable');
-  const [tokenDraft, setTokenDraft] = useState('');
-  const savedChannel = settingsQuery.data?.channel || 'stable';
-  const hasToken = !!settingsQuery.data?.hasGithubToken;
-
-  useEffect(() => {
-    if (settingsQuery.data?.channel) setChannelDraft(settingsQuery.data.channel);
-  }, [settingsQuery.data?.channel]);
-
-  // Saving a channel or a token changes which release the panel sees, so both
-  // paths persist first and then re-run the version check the page displays.
-  const settingsMutation = useMutation({
-    mutationFn: async (body: {
-      channel?: string;
-      githubToken?: string;
-      clearGithubToken?: boolean;
-    }): Promise<UpdateSettingsPayload> => {
-      const msg = await HttpUtil.post<UpdateSettingsPayload>(
-        '/panel/api/system/update-settings',
-        body,
-        { silent: true },
-      );
-      if (!msg?.success) throw new Error(msg?.msg || t('somethingWentWrong'));
-      return msg.obj ?? {};
-    },
-    onSuccess: async (payload, body) => {
-      setTokenDraft('');
-      await settingsQuery.refetch();
-      await versionQuery.refetch();
-      if (body.clearGithubToken) messageApi.success(t('pages.system.tokenCleared'));
-      else if (body.githubToken) messageApi.success(t('pages.system.tokenSaved'));
-      else messageApi.success(t('pages.system.channelSaved'));
-      if (payload.channel) setChannelDraft(payload.channel);
-    },
-    onError: (error: Error) => messageApi.error(error.message),
   });
 
   const updateMutation = useMutation({
@@ -243,11 +192,7 @@ export default function SystemPage() {
                 title={t('somethingWentWrong')}
                 subTitle={(versionQuery.error as Error)?.message}
                 extra={
-                  <Button
-                    type="primary"
-                    icon={<ReloadOutlined />}
-                    onClick={() => versionQuery.refetch()}
-                  >
+                  <Button type="primary" icon={<ReloadOutlined />} onClick={checkNow}>
                     {t('refresh')}
                   </Button>
                 }
@@ -282,18 +227,14 @@ export default function SystemPage() {
                         )}
                         {docker && <Tag bordered={false}>Docker</Tag>}
                         {info?.devBuild && <Tag bordered={false}>dev</Tag>}
-                        {version?.channel && (
-                          <Tag
-                            bordered={false}
-                            color={version.channel === 'dev' ? 'purple' : 'blue'}
-                          >
-                            {channelLabel(t, version.channel)}
-                          </Tag>
-                        )}
-                        {version?.prerelease && <Tag bordered={false}>dev-latest</Tag>}
                         {version?.latestVersion && (
                           <span className="lg-muted lg-num">
-                            {t('pages.system.latest', { version: version.latestVersion })}
+                            {t(
+                              version.prerelease
+                                ? 'pages.system.latestBuild'
+                                : 'pages.system.latest',
+                              { version: version.latestVersion },
+                            )}
                           </span>
                         )}
                       </Space>
@@ -302,7 +243,7 @@ export default function SystemPage() {
                       <Button
                         icon={<ReloadOutlined />}
                         loading={versionQuery.isFetching}
-                        onClick={() => versionQuery.refetch()}
+                        onClick={checkNow}
                       >
                         {t('pages.system.checkAgain')}
                       </Button>
@@ -369,83 +310,6 @@ export default function SystemPage() {
                       )}
                     </div>
                   )}
-                </Card>
-
-                <Card title={t('pages.system.updateSettingsTitle')} className="sys-settings">
-                  <p className="lg-subtitle sys-settings-hint">
-                    {t('pages.system.updateSettingsHint')}
-                  </p>
-
-                  <div className="sys-setting-row">
-                    <div className="sys-setting-copy">
-                      <p className="lg-title">{t('pages.system.channelLabel')}</p>
-                      <p className="lg-subtitle">{t('pages.system.channelHint')}</p>
-                    </div>
-                    <Segmented
-                      className="sys-channel"
-                      value={channelDraft}
-                      disabled={settingsMutation.isPending}
-                      options={[
-                        { label: t('pages.system.channelStable'), value: 'stable' },
-                        { label: t('pages.system.channelDev'), value: 'dev' },
-                      ]}
-                      onChange={(value) => {
-                        const next = String(value);
-                        setChannelDraft(next);
-                        if (next !== savedChannel) settingsMutation.mutate({ channel: next });
-                      }}
-                    />
-                  </div>
-
-                  <div className="sys-setting-row">
-                    <div className="sys-setting-copy">
-                      <p className="lg-title">
-                        <KeyOutlined aria-hidden /> {t('pages.system.tokenLabel')}
-                      </p>
-                      <p className="lg-subtitle">{t('pages.system.tokenHint')}</p>
-                    </div>
-                    <Tag
-                      bordered={false}
-                      color={hasToken ? 'green' : 'default'}
-                      className="sys-token-state"
-                    >
-                      {hasToken
-                        ? t('pages.system.tokenConfigured', {
-                            mask: settingsQuery.data?.githubTokenMasked || '••••',
-                          })
-                        : t('pages.system.tokenNotConfigured')}
-                    </Tag>
-                  </div>
-
-                  <div className="sys-token-row">
-                    <Input.Password
-                      value={tokenDraft}
-                      onChange={(event) => setTokenDraft(event.target.value)}
-                      placeholder={t('pages.system.tokenPlaceholder')}
-                      autoComplete="off"
-                      spellCheck={false}
-                      className="lg-mono"
-                      aria-label={t('pages.system.tokenLabel')}
-                    />
-                    <Button
-                      type="primary"
-                      icon={<SaveOutlined />}
-                      disabled={!tokenDraft.trim()}
-                      loading={settingsMutation.isPending}
-                      onClick={() => settingsMutation.mutate({ githubToken: tokenDraft.trim() })}
-                    >
-                      {t('pages.system.tokenSave')}
-                    </Button>
-                    {hasToken && (
-                      <Button
-                        danger
-                        disabled={settingsMutation.isPending}
-                        onClick={() => settingsMutation.mutate({ clearGithubToken: true })}
-                      >
-                        {t('pages.system.tokenClear')}
-                      </Button>
-                    )}
-                  </div>
                 </Card>
 
                 <Card title={t('pages.system.changelogTitle')} className="sys-changelog">
@@ -539,10 +403,6 @@ export default function SystemPage() {
       </Layout>
     </ConfigProvider>
   );
-}
-
-function channelLabel(t: (key: string) => string, channel: string): string {
-  return channel === 'dev' ? t('pages.system.channelDev') : t('pages.system.channelStable');
 }
 
 function progressForState(state: string): number {
