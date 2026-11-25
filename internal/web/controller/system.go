@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/config"
@@ -27,19 +28,19 @@ const DockerUpdateCommand = "docker compose pull && docker compose up -d"
 // update trigger.
 //
 // Division of labour: GET /panel/api/system/version reads GitHub Releases for
-// junchengluo9-del/LxGate on the configured channel, POST
-// /panel/api/system/update-settings stores that channel and the optional
-// read-only token, and POST /panel/api/system/update either hands the container
-// case back to the operator (docker compose) or starts the existing native
-// updater, which replaces the binary and restarts the service while keeping the
-// SQLite database and vpngate_data/ untouched.
+// junchengluo9-del/LxGate, POST /panel/api/system/update either hands the
+// container case back to the operator (docker compose) or starts the existing
+// native updater, which replaces the binary and restarts the service while
+// keeping the SQLite database and vpngate_data/ untouched.
 //
-// LxGate's release repository is public, so the version check and the update
-// download work with no credential at all. A read-only token the operator saved
-// in the update settings (or GITHUB_TOKEN in the panel's environment) is
-// optional: it raises GitHub's anonymous API limit and lets the panel follow a
-// private fork. A token never leaves the panel: the settings endpoint answers
-// with hasGithubToken and a masked hint.
+// There is one update path, not two. The check asks for the newest published
+// release and falls back to the rolling dev-latest pre-release when the
+// repository has no stable release yet (see release.LatestAvailable), and the
+// update installs whichever of the two the check resolved. LxGate's release
+// repository is public, so neither the check nor the download needs a
+// credential. The update-settings endpoints remain for older clients and keep
+// answering about the channel and token stored by earlier versions, but the
+// panel itself no longer needs either.
 type SystemController struct {
 	BaseController
 
@@ -49,6 +50,34 @@ type SystemController struct {
 	// at a fixture server and force either deployment mode.
 	releaseClient *release.Client
 	dockerProbe   func() bool
+
+	// checkMu guards the last GitHub answer. GitHub's anonymous limit is 60
+	// calls an hour per address, shared with everything else on the host, so
+	// one answer is reused while it is fresh instead of spending a call per
+	// page load.
+	checkMu    sync.Mutex
+	lastAnswer releaseAnswer
+	hasAnswer  bool
+}
+
+const (
+	// releaseCheckTTL is how long one answer is reused. Five minutes keeps a
+	// reloaded page or a second tab from costing a call, and is short enough
+	// that a new release shows up on the next visit.
+	releaseCheckTTL = 5 * time.Minute
+	// releaseCheckDebounce floors a forced check (the page's "Check again"
+	// button) so pressing it repeatedly reuses an answer younger than this
+	// rather than spending a call per press.
+	releaseCheckDebounce = 20 * time.Second
+)
+
+// releaseAnswer is one release check: what it found, which channel it came
+// from, and when it was asked. The same value is what the cache holds.
+type releaseAnswer struct {
+	info    *release.Info
+	channel string
+	err     error
+	at      time.Time
 }
 
 // NewSystemController creates the controller and registers its routes on a
@@ -108,11 +137,26 @@ type versionPayload struct {
 }
 
 func (a *SystemController) version(c *gin.Context) {
-	payload := a.collectVersion(c.Request.Context())
+	payload := a.collectVersion(c.Request.Context(), wantsFreshCheck(c))
 	jsonObj(c, payload, nil)
 }
 
-// updateSettings is what GET and POST /update-settings exchange.
+// wantsFreshCheck reports whether the caller asked to skip the cached answer.
+// The System page's "Check again" button sends refresh=1; a plain page load
+// does not, and reuses an answer that is a few minutes old.
+func wantsFreshCheck(c *gin.Context) bool {
+	switch strings.ToLower(strings.TrimSpace(c.Query("refresh"))) {
+	case "1", "true", "yes":
+		return true
+	}
+	return false
+}
+
+// updateSettings is what GET and POST /update-settings exchange. The panel no
+// longer renders it: the release repository is public and the check resolves
+// one release by itself. The endpoint stays so scripts and older pages keep
+// working, and so the channel and token an earlier version stored can still be
+// read back instead of failing.
 type updateSettings struct {
 	Channel           string `json:"channel"`
 	HasGithubToken    bool   `json:"hasGithubToken"`
@@ -144,16 +188,15 @@ func (a *SystemController) settings() (channel string, token string) {
 	return channel, token
 }
 
-func (a *SystemController) collectVersion(ctx context.Context) versionPayload {
+func (a *SystemController) collectVersion(ctx context.Context, force bool) versionPayload {
 	repo := config.GetReleaseRepo()
 	docker := a.dockerProbe != nil && a.dockerProbe()
 	current := config.GetPanelVersion()
-	channel, token := a.settings()
 
 	payload := versionPayload{
 		CurrentVersion: current,
 		CurrentCommit:  release.ShortCommit(config.GetBuildCommit()),
-		Channel:        channel,
+		Channel:        release.ChannelStable,
 		Repo:           repo,
 		IsDocker:       docker,
 		CanSelfUpdate:  !docker,
@@ -167,18 +210,18 @@ func (a *SystemController) collectVersion(ctx context.Context) versionPayload {
 		return payload
 	}
 
-	// The GitHub call is capped so a blocked network answers the panel quickly.
-	checkCtx, cancel := context.WithTimeout(ctx, release.DefaultTimeout)
-	defer cancel()
-	info, err := a.releaseClient.WithToken(token).Release(checkCtx, channel)
-	if err != nil {
-		if !errors.Is(err, context.Canceled) {
-			payload.CheckError = releaseCheckMessage(err)
-			logger.Debug("system: release check failed:", err)
+	answer := a.releaseForCheck(ctx, force)
+	payload.CheckedAt = answer.at.Format(time.RFC3339)
+	payload.Channel = answer.channel
+	if answer.err != nil {
+		if !errors.Is(answer.err, context.Canceled) {
+			payload.CheckError = releaseCheckMessage(answer.err)
+			logger.Debug("system: release check failed:", answer.err)
 		}
 		return payload
 	}
 
+	info := answer.info
 	payload.Prerelease = info.Prerelease
 	payload.Changelog = info.Body
 	payload.ReleaseName = info.Name
@@ -187,7 +230,7 @@ func (a *SystemController) collectVersion(ctx context.Context) versionPayload {
 		payload.PublishedAt = info.PublishedAt.Format(time.RFC3339)
 	}
 
-	if channel == release.ChannelDev {
+	if answer.channel == release.ChannelDev {
 		// The dev tag is fixed (dev-latest), so the commit is what tells two
 		// builds apart; the tag itself would always look "current".
 		latestCommit := release.ExtractCommit(info)
@@ -203,6 +246,35 @@ func (a *SystemController) collectVersion(ctx context.Context) versionPayload {
 	payload.LatestVersion = release.NormalizeTag(info.TagName)
 	payload.UpdateAvailable = release.IsNewer(info.TagName, current)
 	return payload
+}
+
+// releaseForCheck answers the release the panel should offer, reusing the last
+// answer while it is fresh. force asks for a new call (the page's "Check
+// again"), still floored by releaseCheckDebounce so a held-down button cannot
+// spend GitHub's anonymous limit. A failure is cached like a success: a panel
+// that cannot reach GitHub must not retry on every page load. A request the
+// caller abandoned is not cached, because it says nothing about GitHub.
+func (a *SystemController) releaseForCheck(ctx context.Context, force bool) releaseAnswer {
+	a.checkMu.Lock()
+	defer a.checkMu.Unlock()
+
+	if a.hasAnswer {
+		age := time.Since(a.lastAnswer.at)
+		if age < releaseCheckTTL && (!force || age < releaseCheckDebounce) {
+			return a.lastAnswer
+		}
+	}
+
+	// The GitHub call is capped so a blocked network answers the panel quickly.
+	checkCtx, cancel := context.WithTimeout(ctx, release.DefaultTimeout)
+	defer cancel()
+	info, channel, err := a.releaseClient.LatestAvailable(checkCtx)
+	answer := releaseAnswer{info: info, channel: channel, err: err, at: time.Now()}
+	if ctx.Err() == nil {
+		a.lastAnswer = answer
+		a.hasAnswer = true
+	}
+	return answer
 }
 
 // releaseCheckMessage turns a failed release check into the line the System
@@ -282,20 +354,33 @@ func (a *SystemController) update(c *gin.Context) {
 		return
 	}
 
-	runID, err := a.panelService.StartUpdate()
+	runID, err := a.startPanelUpdate(c.Request.Context())
 	if err != nil {
 		jsonMsg(c, "failed to start the update", err)
 		return
 	}
-	channel, _ := a.settings()
 	jsonObj(c, gin.H{
 		"started":      true,
 		"mode":         "native",
-		"channel":      channel,
 		"runId":        strconv.FormatInt(runID, 10),
 		"message":      "Update started. The panel restarts when the new binary is in place; the database and vpngate_data are preserved.",
 		"preserveData": []string{config.GetDBPath(), "/opt/lxgate/vpngate_data"},
 	}, nil)
+}
+
+// startPanelUpdate installs the release the page offered. The check resolves
+// either the newest stable release or, when there is none, the rolling
+// dev-latest build, and the updater has to follow the same one or the page
+// would offer a version that the update does not install. When the check cannot
+// answer, the stored channel decides as it always has.
+func (a *SystemController) startPanelUpdate(ctx context.Context) (int64, error) {
+	if a.releaseClient != nil {
+		answer := a.releaseForCheck(ctx, false)
+		if answer.err == nil && answer.info != nil {
+			return a.panelService.StartUpdateChannel(answer.channel == release.ChannelDev)
+		}
+	}
+	return a.panelService.StartUpdate()
 }
 
 func (a *SystemController) updateStatus(c *gin.Context) {

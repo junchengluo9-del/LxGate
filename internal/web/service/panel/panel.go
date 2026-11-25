@@ -252,10 +252,10 @@ func (s *PanelService) startUpdate(useDev bool) (int64, error) {
 	if useDev {
 		updateTag = devReleaseTag
 	}
-	// The release repository is private. The token the operator saved in the
-	// update settings is handed to update.sh both in the environment and as the
-	// owners-only file the script reads, so the asset download and the checksum
-	// sidecar can authenticate even from a fresh shell.
+	// The release repository is public, so the download needs no credential.
+	// A token stored by an earlier version is still handed to update.sh (in the
+	// environment and as the owners-only file the script reads) so an existing
+	// setup keeps working; with none stored the download is anonymous.
 	token, _ := (&service.SettingService{}).GetGithubToken()
 	updateScript := fmt.Sprintf("set -e; trap 'rm -f %s' EXIT; %s %s", shellQuote(scriptPath), shellQuote(bash), shellQuote(scriptPath))
 	runIDEnv := "XUI_UPDATE_RUN_ID=" + strconv.FormatInt(runID, 10)
