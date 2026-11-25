@@ -313,7 +313,11 @@
         "mlkem": "Bu çekirdek (Xray v26.9.8+) ML-KEM destekli istemciler gerektirir: yalnızca güncel Xray-core istemcileri (v2rayN/v2rayNG, fp chrome) ve support-x25519mlkem768 açık Mihomo bağlanabilir. Shadowrocket, eski Clash ve sing-box ÇALIŞMAZ. Tüm istemcilerle uyumlu çekirdek v26.6.27'dir. Yine de #version# sürümüne geçilsin mi?",
         "minver": "Bu çekirdek (v26.7.11–v26.9.7) Xray sürümü bildirmeyen istemcileri varsayılan olarak reddeder: Shadowrocket, Clash/Mihomo ve sing-box ÇALIŞMAZ. Uyumlu çekirdek v26.6.27'dir. Yine de #version# sürümüne geçilsin mi?"
       },
-      "xraySwitchAnyway": "Yine de geç"
+      "xraySwitchAnyway": "Yine de geç",
+      "currentExit": {
+        "notConfigured": "Henüz çıkış yapılandırılmadı",
+        "notConfiguredHint": "Trafiği konut çıkışı üzerinden yönlendirmek için VPNGate sayfasında bir düğüm seçin."
+      }
     },
     "inbounds": {
       "totalDownUp": "Toplam Gönderilen/Alınan",
@@ -2413,7 +2417,8 @@
       "defaultOutboundDesc": "Yönlendirme kuralıyla eşleşmeyen trafik bu gideni kullanır (listedeki ilk giden).",
       "routingScript": "Yönlendirme Betiği",
       "routingScriptDesc": "HandleRoute tanımlayan bir .lua dosyasının yolu; mutlak ya da Xray bin klasörüne göre göreli. Betik bundan sonra her rotayı seçer ve Xray, panelin api kuralı dahil tüm yönlendirme kurallarını yok sayar: api gelen bağlantısını api giden bağlantısına yönlendirin, yoksa trafik istatistikleri ve canlı istemci değişiklikleri durur. Dosya yoksa veya geçersizse Xray başlamaz.",
-      "routingScriptActive": "{section} bölümünde bir yönlendirme betiği ayarlı, bu yüzden Xray bu kuralları yok sayar."
+      "routingScriptActive": "{section} bölümünde bir yönlendirme betiği ayarlı, bu yüzden Xray bu kuralları yok sayar.",
+      "addOutbound": "Outbound ekle"
     },
     "hosts": {
       "addHost": "Host Ekle",
@@ -2538,6 +2543,11 @@
     },
     "vpngate": {
       "openvpnMissing": "Bu sunucuda openvpn yüklü değil: motor çalışır ve düğümleri listeler, ancak openvpn yüklenene kadar çıkış bağlantısı başarısız olur."
+    },
+    "system": {
+      "checkFailedTag": "Kontrol başarısız",
+      "checkFailedFriendly": "Sürüm deposuna ulaşılamadı. Panel çalışmaya devam ediyor; daha sonra tekrar deneyin.",
+      "showRawError": "Ham hatayı göster"
     }
   },
   "tgbot": {
@@ -2890,5 +2900,9 @@
     "restartXray": "Xray Hizmetini Yeniden Başlat",
     "restartXraySuccess": "Xray hizmeti başarıyla yeniden başlatıldı",
     "settings": "Ayarlar"
+  },
+  "emptyState": {
+    "title": "Henüz bir şey yok",
+    "hint": "Başlamak için ilkini ekleyin; bu listede görünecek."
   }
 }

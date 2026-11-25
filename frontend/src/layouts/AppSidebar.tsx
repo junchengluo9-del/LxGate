@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -205,6 +205,25 @@ export default function AppSidebar() {
     setOpenKeys([...openKeys, openSubmenu]);
   }
 
+  // The route rack can outgrow a short window. A soft fade at its foot says
+  // "there is more below" while anything is hidden; it clears at the bottom.
+  const navWrapRef = useRef<HTMLDivElement>(null);
+  const [navHasMore, setNavHasMore] = useState(false);
+  useEffect(() => {
+    const list = navWrapRef.current?.querySelector<HTMLElement>('.sider-nav');
+    if (!list) return undefined;
+    const measure = () => setNavHasMore(list.scrollHeight - list.scrollTop - list.clientHeight > 4);
+    measure();
+    list.addEventListener('scroll', measure, { passive: true });
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(list);
+    for (const child of Array.from(list.children)) observer?.observe(child);
+    return () => {
+      list.removeEventListener('scroll', measure);
+      observer?.disconnect();
+    };
+  }, [collapsed, openKeys]);
+
   const toMenuItems = useCallback(
     (items: typeof tabs): MenuProps['items'] =>
       items.map((tab) => {
@@ -314,17 +333,19 @@ export default function AppSidebar() {
           </button>
         </Tooltip>
 
-        <Menu
-          id="sider-nav"
-          theme={currentTheme}
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          openKeys={collapsed ? undefined : openKeys}
-          onOpenChange={(keys) => setOpenKeys(keys as string[])}
-          className="sider-nav"
-          items={toMenuItems(navItems)}
-          onClick={onMenuClick}
-        />
+        <div ref={navWrapRef} className={`sider-nav-wrap${navHasMore ? ' has-more' : ''}`}>
+          <Menu
+            id="sider-nav"
+            theme={currentTheme}
+            mode="inline"
+            selectedKeys={[selectedKey]}
+            openKeys={collapsed ? undefined : openKeys}
+            onOpenChange={(keys) => setOpenKeys(keys as string[])}
+            className="sider-nav"
+            items={toMenuItems(navItems)}
+            onClick={onMenuClick}
+          />
+        </div>
         <Menu
           theme={currentTheme}
           mode="inline"

@@ -491,3 +491,37 @@
 .api-docs-page.is-dark .swagger-ui .errors-wrapper .errors small {
   color: var(--sw-text);
 }
+
+/* The tag strip scrolls sideways: soft fades at both ends show that more tags
+   sit beyond the edge instead of a tag being cut in half. */
+.api-docs-page .swagger-ui .section-tabs .ant-tabs-nav-wrap {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 24px,
+    #000 calc(100% - 40px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 24px,
+    #000 calc(100% - 40px),
+    transparent 100%
+  );
+  padding-inline: 12px 32px;
+}
+
+/* Method badges on the dark theme: brighter text on a deeper tint, so GET /
+   POST stay readable against the dark cards. */
+.api-docs-page.is-dark .swagger-ui .opblock .opblock-summary-method {
+  color: #fff;
+  text-shadow: none;
+  filter: saturate(1.15) brightness(1.08);
+}
+
+.api-docs-page.is-dark .swagger-ui .opblock-tag,
+.api-docs-page.is-dark .swagger-ui .opblock .opblock-summary-path,
+.api-docs-page.is-dark .swagger-ui .opblock .opblock-summary-description {
+  color: rgba(255, 255, 255, 0.88);
+}

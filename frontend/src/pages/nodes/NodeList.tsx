@@ -26,6 +26,7 @@ import type { NodeRecord } from '@/api/queries/useNodesQuery';
 import { isPanelUpdateAvailable } from '@/lib/panel-version';
 import { activateOnKey } from '@/utils/a11y';
 import './NodeList.css';
+import ListEmpty from '@/components/ListEmpty';
 
 interface NodeListProps {
   nodes: NodeRecord[];
@@ -253,7 +254,7 @@ export default function NodeList({
       {
         title: t('pages.nodes.actions'),
         align: 'center',
-        width: 190,
+        width: 160,
         render: (_value, record) =>
           record.transitive ? (
             <Tooltip
@@ -573,10 +574,11 @@ export default function NodeList({
         }
         locale={{
           emptyText: (
-            <div className="card-empty">
-              <ClusterOutlined aria-hidden style={{ fontSize: 32, marginBottom: 8 }} />
-              <div>{t('noData')}</div>
-            </div>
+            <ListEmpty
+              icon={<ClusterOutlined />}
+              actionLabel={t('pages.nodes.addNode')}
+              onAction={onAdd}
+            />
           ),
         }}
         expandable={{
@@ -585,7 +587,7 @@ export default function NodeList({
         }}
       />
     ),
-    [dataSource, columns, loading, selectedIds, onSelectionChange, t],
+    [dataSource, columns, loading, selectedIds, onSelectionChange, onAdd, t],
   );
 
   return (
@@ -608,10 +610,11 @@ export default function NodeList({
         <>
           <div className="node-cards">
             {dataSource.length === 0 ? (
-              <div className="card-empty">
-                <ClusterOutlined aria-hidden style={{ fontSize: 28, opacity: 0.5 }} />
-                <div>{t('noData')}</div>
-              </div>
+              <ListEmpty
+                icon={<ClusterOutlined />}
+                actionLabel={t('pages.nodes.addNode')}
+                onAction={onAdd}
+              />
             ) : (
               dataSource.map((record) =>
                 record.transitive ? (

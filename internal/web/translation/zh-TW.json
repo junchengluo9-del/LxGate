@@ -313,13 +313,17 @@
         "mlkem": "此核心（Xray v26.9.8 及以上）要求用戶端支援 ML-KEM：只有新版 Xray-core 用戶端（v2rayN/v2rayNG，指紋 chrome）和開啟 support-x25519mlkem768 的 Mihomo 能連線；小火箭 Shadowrocket、舊版 Clash、sing-box 將無法使用（顯示在線但無流量）。相容所有用戶端的核心是 v26.6.27。確定仍要切換到 #version# 嗎？",
         "minver": "此核心（v26.7.11–v26.9.7）預設拒絕未回報 Xray 版本的用戶端：小火箭、Clash/Mihomo、sing-box 將無法使用。相容所有用戶端的核心是 v26.6.27。確定仍要切換到 #version# 嗎？"
       },
-      "xraySwitchAnyway": "仍然切換"
+      "xraySwitchAnyway": "仍然切換",
+      "currentExit": {
+        "notConfigured": "尚未設定出口",
+        "notConfiguredHint": "到 VPNGate 頁面選擇一個節點，即可透過住宅出口轉發流量。"
+      }
     },
     "inbounds": {
       "totalDownUp": "總上傳 / 下載",
       "totalUsage": "總用量",
       "inboundCount": "入站數量",
-      "operate": "選單",
+      "operate": "操作",
       "enable": "啟用",
       "remark": "備註",
       "node": "節點",
@@ -2413,7 +2417,8 @@
       "defaultOutboundDesc": "未符合任何路由規則的流量走此出站（清單中的第一個出站）。",
       "routingScript": "路由腳本",
       "routingScriptDesc": "定義了 HandleRoute 的 .lua 檔案路徑，可為絕對路徑或相對於 Xray bin 資料夾的路徑。設定後由腳本選擇所有路由，Xray 會忽略全部路由規則，包括面板的 api 規則：請將 api 入站路由到 api 出站，否則流量統計與用戶端變更的即時套用都會停止。檔案不存在或無效時 Xray 無法啟動。",
-      "routingScriptActive": "已在「{section}」中設定路由腳本，因此 Xray 會忽略這些規則。"
+      "routingScriptActive": "已在「{section}」中設定路由腳本，因此 Xray 會忽略這些規則。",
+      "addOutbound": "新增出站"
     },
     "hosts": {
       "addHost": "新增 Host",
@@ -2538,6 +2543,11 @@
     },
     "vpngate": {
       "openvpnMissing": "本機未安裝 openvpn：引擎可以執行並列出節點，但在安裝 openvpn 之前無法連線出口。"
+    },
+    "system": {
+      "checkFailedTag": "檢查失敗",
+      "checkFailedFriendly": "暫時無法存取發布倉庫，面板功能不受影響，可稍後重試。",
+      "showRawError": "查看原始錯誤"
     }
   },
   "tgbot": {
@@ -2890,5 +2900,9 @@
     "restartXray": "重啟 Xray 服務",
     "restartXraySuccess": "Xray 服務已成功重啟",
     "settings": "設定"
+  },
+  "emptyState": {
+    "title": "這裡還沒有內容",
+    "hint": "新增第一筆後，它會顯示在這個列表裡。"
   }
 }

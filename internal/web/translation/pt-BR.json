@@ -313,7 +313,11 @@
         "mlkem": "Este núcleo (Xray v26.9.8+) exige clientes com ML-KEM: só conectam clientes Xray-core atuais (v2rayN/v2rayNG, fp chrome) e Mihomo com support-x25519mlkem768. Shadowrocket, Clash antigo e sing-box NÃO funcionarão. O núcleo compatível com todos os clientes é v26.6.27. Mudar para #version# mesmo assim?",
         "minver": "Este núcleo (v26.7.11–v26.9.7) rejeita por padrão clientes que não informam versão do Xray: Shadowrocket, Clash/Mihomo e sing-box NÃO funcionarão. O núcleo compatível é v26.6.27. Mudar para #version# mesmo assim?"
       },
-      "xraySwitchAnyway": "Mudar mesmo assim"
+      "xraySwitchAnyway": "Mudar mesmo assim",
+      "currentExit": {
+        "notConfigured": "Nenhuma saída configurada",
+        "notConfiguredHint": "Escolha um nó na página VPNGate para rotear o tráfego por uma saída residencial."
+      }
     },
     "inbounds": {
       "totalDownUp": "Total Enviado/Recebido",
@@ -2413,7 +2417,8 @@
       "defaultOutboundDesc": "Tráfego sem regra de roteamento usa esta saída (a primeira da lista).",
       "routingScript": "Script de roteamento",
       "routingScriptDesc": "Caminho para um arquivo .lua que define HandleRoute, absoluto ou relativo à pasta bin do Xray. O script passa a escolher cada rota e o Xray ignora todas as regras de roteamento, inclusive a regra api do painel: envie o inbound api para o outbound api ou as estatísticas de tráfego e as alterações de clientes ao vivo param. O Xray não inicia se o arquivo estiver ausente ou for inválido.",
-      "routingScriptActive": "Há um script de roteamento definido em {section}, então o Xray ignora estas regras."
+      "routingScriptActive": "Há um script de roteamento definido em {section}, então o Xray ignora estas regras.",
+      "addOutbound": "Adicionar outbound"
     },
     "hosts": {
       "addHost": "Adicionar Host",
@@ -2538,6 +2543,11 @@
     },
     "vpngate": {
       "openvpnMissing": "O openvpn não está instalado neste host: o mecanismo funciona e lista os nós, mas conectar uma saída falhará até que o openvpn seja instalado."
+    },
+    "system": {
+      "checkFailedTag": "Falha na verificação",
+      "checkFailedFriendly": "Não foi possível acessar o repositório de releases. O painel continua funcionando; tente mais tarde.",
+      "showRawError": "Ver o erro original"
     }
   },
   "tgbot": {
@@ -2890,5 +2900,9 @@
     "restartXray": "Reiniciar serviço Xray",
     "restartXraySuccess": "O serviço Xray foi reiniciado com sucesso",
     "settings": "Configurações"
+  },
+  "emptyState": {
+    "title": "Nada aqui ainda",
+    "hint": "Adicione o primeiro para começar; ele aparecerá nesta lista."
   }
 }

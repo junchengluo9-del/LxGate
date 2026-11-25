@@ -858,7 +858,7 @@ def row_to_node(row: dict[str, str], config_text: str) -> dict[str, Any]:
     config_path = CONFIG_DIR / f"{node_id}.ovpn"
     
     country_long = row.get("CountryLong", "")
-    country_zh = vpn_utils.COUNTRY_TRANSLATIONS.get(country_long, vpn_utils.COUNTRY_TRANSLATIONS.get(country_long.strip(), country_long))
+    country_zh = vpn_utils.translate_country(country_long)
     return {
         "id": node_id,
         "country": country_zh,

@@ -322,7 +322,9 @@
         "title": "Current exit",
         "open": "Open VPNGate",
         "noExit": "No exit is online right now",
-        "inbounds": "{count} inbounds"
+        "inbounds": "{count} inbounds",
+        "notConfigured": "No exit configured yet",
+        "notConfiguredHint": "Pick a node on the VPNGate page to start routing traffic through a residential exit."
       }
     },
     "inbounds": {
@@ -2557,7 +2559,8 @@
       "defaultOutboundDesc": "Traffic that does not match any routing rule uses this outbound (Xray uses the first outbound in the list).",
       "routingScript": "Routing Script",
       "routingScriptDesc": "Path to a .lua file defining HandleRoute, absolute or relative to the Xray bin folder. The script then picks every route and Xray ignores all routing rules, the panel's api rule included: send the api inbound to the api outbound or traffic stats and live client changes stop. Xray will not start if the file is missing or invalid.",
-      "routingScriptActive": "A routing script is set under {section}, so Xray ignores these rules."
+      "routingScriptActive": "A routing script is set under {section}, so Xray ignores these rules.",
+      "addOutbound": "Add outbound"
     },
     "vpngate": {
       "statusCapsule": "Panel status",
@@ -2786,7 +2789,9 @@
       "tokenClear": "Clear",
       "tokenCleared": "GitHub token cleared",
       "checkFailedHint": "The release check failed — the reason is shown below.",
-      "notChecked": "Not checked"
+      "checkFailedTag": "Check failed",
+      "checkFailedFriendly": "Could not reach the release repository. The panel keeps working; try again later.",
+      "showRawError": "Show the raw error"
     },
     "apiDocs": {
       "websocketEvents": "WebSocket events"
@@ -3142,5 +3147,9 @@
     "restartXray": "Restart Xray Service",
     "restartXraySuccess": "Xray has been successfully relaunched",
     "settings": "Settings"
+  },
+  "emptyState": {
+    "title": "Nothing here yet",
+    "hint": "Add the first one to get started — it will show up in this list."
   }
 }

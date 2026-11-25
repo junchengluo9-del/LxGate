@@ -33,6 +33,20 @@ export default function CurrentExitCard({ isMobile }: { isMobile: boolean }) {
   const live = exits.filter((exit) => exit.running);
   const connecting = exits.filter((exit) => exit.connecting && !exit.running);
 
+  // Red means "an exit that should carry traffic is down". A fresh install with
+  // no exit asked to connect is simply not set up yet: neutral, with a pointer.
+  // An exit only "should be up" once it has carried a node or reported a
+  // failure; the default slot of a fresh install has done neither.
+  const wantsTraffic = exits.some(
+    (exit) => !!exit.lastError || !!exit.nodeId || !!exit.connectedAt,
+  );
+  const notConfigured =
+    !exitsQuery.isPending &&
+    !exitsQuery.isError &&
+    live.length === 0 &&
+    connecting.length === 0 &&
+    !wantsTraffic;
+
   const boundFor = (slot: number) =>
     Object.values(bindings).filter((boundSlot) => boundSlot === slot).length;
 
@@ -42,7 +56,9 @@ export default function CurrentExitCard({ isMobile }: { isMobile: boolean }) {
       ? 'ok'
       : connecting.length > 0
         ? 'warn'
-        : 'bad';
+        : notConfigured
+          ? 'idle'
+          : 'bad';
 
   const pill = exitsQuery.isPending
     ? { tone: 'warn' as const, label: t('loading') }
@@ -52,16 +68,20 @@ export default function CurrentExitCard({ isMobile }: { isMobile: boolean }) {
         ? { tone: 'ok' as const, label: t('pages.vpngate.connected') }
         : connecting.length > 0
           ? { tone: 'warn' as const, label: t('pages.vpngate.connecting') }
-          : {
-              tone: 'bad' as const,
-              label: exitsQuery.isError
-                ? t('pages.vpngate.statusUnknown')
-                : t('pages.vpngate.disconnected'),
-            };
+          : notConfigured
+            ? { tone: 'idle' as const, label: t('pages.index.currentExit.notConfigured') }
+            : {
+                tone: 'bad' as const,
+                label: exitsQuery.isError
+                  ? t('pages.vpngate.statusUnknown')
+                  : t('pages.vpngate.disconnected'),
+              };
 
   const emptyText = exitsQuery.isError
     ? t('pages.vpngate.statusUnknown')
-    : t('pages.index.currentExit.noExit');
+    : notConfigured
+      ? t('pages.index.currentExit.notConfiguredHint')
+      : t('pages.index.currentExit.noExit');
 
   return (
     <section

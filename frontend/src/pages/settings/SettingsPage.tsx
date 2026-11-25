@@ -241,7 +241,6 @@ export default function SettingsPage() {
         <AppSidebar />
 
         <Layout className="content-shell">
-
           <TopStatusBar />
           <Layout.Content id="content-layout" className="content-area">
             <Spin
@@ -277,7 +276,7 @@ export default function SettingsPage() {
 
                   <Row gutter={[isMobile ? 8 : 16, isMobile ? 0 : 12]}>
                     <Col span={24}>
-                      <Card hoverable>
+                      <Card hoverable className="lg-savebar">
                         <Row className="header-row">
                           <Col xs={24} sm={10} className="header-actions">
                             <Space>

@@ -154,7 +154,7 @@ export function useInboundColumns({
         dataIndex: 'remark',
         key: 'remark',
         align: 'center',
-        width: 140,
+        width: 176,
         sorter: (a, b) => compareText(a.remark, b.remark),
         render: (_, record) => {
           const hostRemarks = hostRemarksByInboundId.get(record.id) ?? [];

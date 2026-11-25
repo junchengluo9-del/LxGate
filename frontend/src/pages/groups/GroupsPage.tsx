@@ -57,6 +57,7 @@ import {
   type GroupSummary,
 } from '@/schemas/client';
 import { parseMsg } from '@/utils/zodValidate';
+import ListEmpty from '@/components/ListEmpty';
 
 const ClientRecordListSchema = z
   .array(ClientRecordSchema)
@@ -594,10 +595,11 @@ export default function GroupsPage() {
                         scroll={{ x: 'max-content' }}
                         locale={{
                           emptyText: (
-                            <div className="card-empty">
-                              <TagsOutlined aria-hidden style={{ fontSize: 32, marginBottom: 8 }} />
-                              <div>{t('noData')}</div>
-                            </div>
+                            <ListEmpty
+                              icon={<TagsOutlined />}
+                              actionLabel={t('pages.groups.addGroup')}
+                              onAction={openCreate}
+                            />
                           ),
                         }}
                       />

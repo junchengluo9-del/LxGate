@@ -269,7 +269,9 @@ export default function SystemPage() {
                              public repository, so the badge only says the check did
                              not answer; the reason is shown below. */
                           <Tooltip title={t('pages.system.checkFailedHint')}>
-                            <Tag bordered={false}>{t('pages.system.notChecked')}</Tag>
+                            <Tag bordered={false} color="orange">
+                              {t('pages.system.checkFailedTag')}
+                            </Tag>
                           </Tooltip>
                         ) : (
                           <Tag bordered={false} color={version?.updateAvailable ? 'gold' : 'green'}>
@@ -319,10 +321,18 @@ export default function SystemPage() {
                   {version?.checkError && (
                     <Alert
                       className="sys-alert"
-                      type="info"
+                      type="warning"
                       showIcon
                       message={t('pages.system.checkFailed')}
-                      description={version.checkError}
+                      description={
+                        <>
+                          <p className="sys-alert-text">{t('pages.system.checkFailedFriendly')}</p>
+                          <details className="sys-alert-raw">
+                            <summary>{t('pages.system.showRawError')}</summary>
+                            <code className="lg-mono">{version.checkError}</code>
+                          </details>
+                        </>
+                      }
                     />
                   )}
 
