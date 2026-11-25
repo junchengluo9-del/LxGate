@@ -121,3 +121,15 @@
     margin-left: 0;
   }
 }
+
+/* Not set up yet: a quiet neutral pill instead of the red "disconnected". */
+.ov-exit-card .lg-pill.idle {
+  color: var(--lg-text-dim);
+  background: color-mix(in srgb, var(--lg-text-dim) 12%, transparent);
+}
+
+.ov-exit-card .lg-pill.idle .lg-dot {
+  background: var(--lg-text-dim);
+  box-shadow: none;
+  animation: none;
+}

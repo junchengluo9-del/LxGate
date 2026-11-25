@@ -55,3 +55,10 @@ vpngate/.lxgate-engine-version
 # Held back on first push: the GitHub App lacks the `workflows` permission.
 # Remove this rule (and add these files back) after granting/entering them via GitHub.
 .github/workflows/
+
+# Python bytecode (vpngate sidecar)
+__pycache__/
+*.py[cod]
+
+# Local node_modules symlinks (the directory pattern above does not match a symlink)
+/frontend/node_modules

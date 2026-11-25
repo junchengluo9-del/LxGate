@@ -36,6 +36,7 @@ import { buildHostRemarksByInboundId, formatHostRemarksLabel } from './helpers';
 import InboundStatsModal from './InboundStatsModal';
 import type { DBInboundRecord, GeneralAction, InboundListProps, RowAction } from './types';
 import './InboundList.css';
+import ListEmpty from '@/components/ListEmpty';
 
 function HostRemarksSuffix({ remarks }: { remarks: string[] }) {
   if (remarks.length === 0) return null;
@@ -286,10 +287,11 @@ export default function InboundList({
         {isMobile ? (
           <div className="inbound-cards">
             {visibleInbounds.length === 0 ? (
-              <div className="card-empty">
-                <ImportOutlined aria-hidden style={{ fontSize: 28, opacity: 0.5 }} />
-                <div>{t('noData')}</div>
-              </div>
+              <ListEmpty
+                icon={<ImportOutlined />}
+                actionLabel={t('pages.inbounds.addInbound')}
+                onAction={onAddInbound}
+              />
             ) : (
               <>
                 <div className="card-bulk-bar">
@@ -381,10 +383,11 @@ export default function InboundList({
             size="small"
             locale={{
               emptyText: (
-                <div className="card-empty">
-                  <ImportOutlined aria-hidden style={{ fontSize: 32, marginBottom: 8 }} />
-                  <div>{t('noData')}</div>
-                </div>
+                <ListEmpty
+                  icon={<ImportOutlined />}
+                  actionLabel={t('pages.inbounds.addInbound')}
+                  onAction={onAddInbound}
+                />
               ),
             }}
           />

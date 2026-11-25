@@ -313,7 +313,11 @@
         "mlkem": "Core ini (Xray v26.9.8+) memerlukan klien yang mendukung ML-KEM: hanya klien Xray-core terbaru (v2rayN/v2rayNG, fp chrome) dan Mihomo dengan support-x25519mlkem768 yang bisa terhubung. Shadowrocket, Clash lama, dan sing-box TIDAK akan berfungsi. Core yang kompatibel dengan semua klien adalah v26.6.27. Tetap beralih ke #version#?",
         "minver": "Core ini (v26.7.11–v26.9.7) secara default menolak klien yang tidak melaporkan versi Xray: Shadowrocket, Clash/Mihomo, dan sing-box TIDAK akan berfungsi. Core yang kompatibel adalah v26.6.27. Tetap beralih ke #version#?"
       },
-      "xraySwitchAnyway": "Tetap beralih"
+      "xraySwitchAnyway": "Tetap beralih",
+      "currentExit": {
+        "notConfigured": "Belum ada exit yang dikonfigurasi",
+        "notConfiguredHint": "Pilih node di halaman VPNGate untuk merutekan lalu lintas melalui exit residensial."
+      }
     },
     "inbounds": {
       "totalDownUp": "Total Terkirim/Diterima",
@@ -2413,7 +2417,8 @@
       "defaultOutboundDesc": "Lalu lintas tanpa aturan routing memakai outbound ini (yang pertama dalam daftar).",
       "routingScript": "Skrip Routing",
       "routingScriptDesc": "Path ke file .lua yang mendefinisikan HandleRoute, absolut atau relatif terhadap folder bin Xray. Skrip lalu memilih setiap rute dan Xray mengabaikan semua aturan routing, termasuk aturan api panel: arahkan inbound api ke outbound api atau statistik trafik dan perubahan klien langsung akan berhenti. Xray tidak akan berjalan jika file tidak ada atau tidak valid.",
-      "routingScriptActive": "Skrip routing diatur di {section}, jadi Xray mengabaikan aturan ini."
+      "routingScriptActive": "Skrip routing diatur di {section}, jadi Xray mengabaikan aturan ini.",
+      "addOutbound": "Tambah outbound"
     },
     "hosts": {
       "addHost": "Tambah Host",
@@ -2535,6 +2540,14 @@
         "badVlessRoute": "Masukkan satu angka antara 0 dan 65535"
       },
       "dragToReorder": "Seret untuk mengurutkan ulang {name}"
+    },
+    "vpngate": {
+      "openvpnMissing": "openvpn belum terpasang di host ini: mesin tetap berjalan dan menampilkan node, tetapi menghubungkan exit akan gagal sampai openvpn dipasang."
+    },
+    "system": {
+      "checkFailedTag": "Pemeriksaan gagal",
+      "checkFailedFriendly": "Tidak dapat menghubungi repositori rilis. Panel tetap berjalan; coba lagi nanti.",
+      "showRawError": "Lihat galat asli"
     }
   },
   "tgbot": {
@@ -2887,5 +2900,9 @@
     "restartXray": "Mulai Ulang Layanan Xray",
     "restartXraySuccess": "Layanan Xray berhasil dimulai ulang",
     "settings": "Pengaturan"
+  },
+  "emptyState": {
+    "title": "Belum ada apa pun",
+    "hint": "Tambahkan yang pertama untuk memulai; akan muncul di daftar ini."
   }
 }

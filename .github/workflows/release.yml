@@ -9,16 +9,17 @@ on:
       - main
     tags:
       - "v*.*.*"
-    paths:
-      - "**.go"
-      - "go.mod"
-      - "go.sum"
-      - "**.sh"
-      - "frontend/**"
-      - "lxgate.service.debian"
-      - "lxgate.service.arch"
-      - "lxgate.service.rhel"
-      - ".github/workflows/release.yml"
+    # Skip only what never reaches a release archive. An allow-list used to
+    # live here and missed files the binary embeds (internal/web/translation/*.json,
+    # vpngate/*.py, internal/config/version, ...): a push touching only those left
+    # dev-latest on the previous commit, so a fresh install from the README one-liner
+    # silently deployed an older build than main.
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - ".oss-scanner/**"
+      - "deploy/**"
+      - "media/**"
 
 # Bundled Xray-core release. Keep in sync with xray.RecommendedXrayVersion
 # (internal/xray/compat.go) and DockerInit.sh; TestRecommendedXrayVersionMatchesPins

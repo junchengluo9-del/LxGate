@@ -3043,10 +3043,29 @@ export const sections: readonly Section[] = [
           'Every exit slot (name, device, policy table, loopback proxy port, running node, routing policy, health), the host memory budget (total / available / reserve / per tunnel / how many more tunnels fit), the per-inbound binding read from the Xray template, and the inbound options a binding can name.',
       },
       {
+        method: 'GET',
+        path: '/panel/api/vpngate/exits/bindings',
+        summary: 'Alias of GET /panel/api/vpngate/exits, kept for clients that read the inbound bindings by name.',
+      },
+      {
         method: 'POST',
         path: '/panel/api/vpngate/exits',
         summary:
           'Create an exit slot. The engine assigns a free device (lxgtunN), policy table (100+N) and loopback proxy port, registers its vpngate-out-N outbound and does not connect it until asked.',
+        params: [
+          {
+            name: 'name',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'Display name for the new exit.',
+          },
+        ],
+        body: '{\n  "name": "日本住宅 2"\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/vpngate/exits/create',
+        summary: 'Alias of POST /panel/api/vpngate/exits: create an exit slot with the given display name.',
         params: [
           {
             name: 'name',
@@ -3199,6 +3218,43 @@ export const sections: readonly Section[] = [
         path: '/panel/api/system/update',
         summary:
           'Start an update. Docker mode answers with the docker compose command and started=false; native mode starts the updater and returns runId.',
+      },
+      {
+        method: 'GET',
+        path: '/panel/api/system/update-settings',
+        summary:
+          'Update channel (stable / dev) and whether a read-only GitHub token is stored. The token itself is never returned: only hasGithubToken and a masked hint.',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/system/update-settings',
+        summary:
+          'Save the update channel and/or the optional read-only GitHub token (raises the anonymous API limit, needed for private forks). clearGithubToken removes a stored token.',
+        params: [
+          {
+            name: 'channel',
+            in: 'body (json)',
+            type: 'string',
+            enum: ['stable', 'dev'],
+            desc: 'Release channel to follow.',
+            optional: true,
+          },
+          {
+            name: 'githubToken',
+            in: 'body (json)',
+            type: 'string',
+            desc: 'Read-only token; at most 255 characters.',
+            optional: true,
+          },
+          {
+            name: 'clearGithubToken',
+            in: 'body (json)',
+            type: 'boolean',
+            desc: 'Remove the stored token.',
+            optional: true,
+          },
+        ],
+        body: '{\n  "channel": "stable"\n}',
       },
       {
         method: 'GET',

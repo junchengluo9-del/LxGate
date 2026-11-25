@@ -322,14 +322,16 @@
         "title": "当前出口",
         "open": "打开 VPNGate",
         "noExit": "当前没有出口在线",
-        "inbounds": "{count} 个入站"
+        "inbounds": "{count} 个入站",
+        "notConfigured": "还没有配置出口",
+        "notConfiguredHint": "到 VPNGate 页面选择一个节点，即可通过住宅出口转发流量。"
       }
     },
     "inbounds": {
       "totalDownUp": "总上传 / 下载",
       "totalUsage": "总用量",
       "inboundCount": "入站数量",
-      "operate": "菜单",
+      "operate": "操作",
       "enable": "启用",
       "remark": "备注",
       "node": "节点",
@@ -2436,7 +2438,8 @@
       "defaultOutboundDesc": "未匹配任何路由规则的流量走此出站（列表中的第一个出站）。",
       "routingScript": "路由脚本",
       "routingScriptDesc": "定义了 HandleRoute 的 .lua 文件路径，可为绝对路径或相对于 Xray bin 目录的路径。设置后由脚本选择所有路由，Xray 会忽略全部路由规则，包括面板的 api 规则：请把 api 入站路由到 api 出站，否则流量统计和客户端变更的实时生效都会停止。文件不存在或无效时 Xray 无法启动。",
-      "routingScriptActive": "已在“{section}”中设置路由脚本，因此 Xray 会忽略这些规则。"
+      "routingScriptActive": "已在“{section}”中设置路由脚本，因此 Xray 会忽略这些规则。",
+      "addOutbound": "添加出站"
     },
     "hosts": {
       "addHost": "添加主机",
@@ -2574,6 +2577,7 @@
       "unavailableTitle": "当前主机无法运行 VPNGate 引擎",
       "unavailableHint": "请安装 python3 与 openvpn；或设置 LXGATE_VPNGATE_ENABLED=0 隐藏此页面。",
       "engineErrorTitle": "引擎健康检查没有响应",
+      "openvpnMissing": "本机未安装 openvpn：引擎可以运行并列出节点，但在安装 openvpn 之前无法连接出口。",
       "tiles": {
         "engine": "引擎",
         "exit": "出口",
@@ -2785,7 +2789,9 @@
       "tokenClear": "清除",
       "tokenCleared": "GitHub Token 已清除",
       "checkFailedHint": "版本检查失败，具体原因见下方。",
-      "notChecked": "未检查"
+      "checkFailedTag": "检查失败",
+      "checkFailedFriendly": "暂时无法访问发布仓库，面板功能不受影响，可稍后重试。",
+      "showRawError": "查看原始错误"
     },
     "apiDocs": {
       "websocketEvents": "WebSocket 事件"
@@ -3141,5 +3147,9 @@
     "restartXray": "重启 Xray 服务",
     "restartXraySuccess": "Xray 服务已成功重启",
     "settings": "设置"
+  },
+  "emptyState": {
+    "title": "这里还没有内容",
+    "hint": "添加第一条后，它会显示在这个列表里。"
   }
 }

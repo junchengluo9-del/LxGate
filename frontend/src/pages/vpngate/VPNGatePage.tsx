@@ -51,6 +51,8 @@ import {
   type VpngateExit,
 } from '@/api/queries/useVpngateExits';
 import ExitsPanel from '@/pages/vpngate/ExitsPanel';
+import { localizeSupervisorWarning } from '@/pages/vpngate/supervisorWarning';
+import { compareLatency, formatCount } from '@/pages/vpngate/nodeTable';
 import AppSidebar from '@/layouts/AppSidebar';
 import TopStatusBar from '@/layouts/TopStatusBar';
 import { setMessageInstance } from '@/utils/messageBus';
@@ -153,6 +155,15 @@ function nodeIpType(node: VpnGateNode) {
 const NODES_POLL_MS = 4000;
 const STATUS_POLL_MS = 8000;
 const LOGS_POLL_MS = 4000;
+
+/** Colour class for one engine log line, from its level or a failure word. */
+function logLevelClass(level?: string, message?: string): 'is-error' | 'is-warn' | 'is-info' {
+  const value = (level ?? '').toLowerCase();
+  if (value.startsWith('err') || value === 'critical' || value === 'fatal') return 'is-error';
+  if (value.startsWith('warn')) return 'is-warn';
+  if (/失败|错误|超时|failed|error|timed out/i.test(message ?? '')) return 'is-warn';
+  return 'is-info';
+}
 
 function toneForNode(node: VpnGateNode): 'ok' | 'warn' | 'bad' {
   const latency = node.latency_ms || node.ping || 0;
@@ -535,7 +546,9 @@ export default function VPNGatePage() {
         title: t('pages.vpngate.columns.latency'),
         dataIndex: 'latency_ms',
         width: 110,
-        sorter: (a, b) => (a.latency_ms || a.ping || 0) - (b.latency_ms || b.ping || 0),
+        // A node that has not answered a probe has no latency, not a 0 ms one:
+        // it sinks to the bottom in both directions instead of heading the list.
+        sorter: (a, b, sortOrder) => compareLatency(a, b, sortOrder),
         defaultSortOrder: 'ascend',
         render: (_value, node) => {
           const latency = node.latency_ms || node.ping || 0;
@@ -551,14 +564,14 @@ export default function VPNGatePage() {
         dataIndex: 'score',
         width: 90,
         sorter: (a, b) => (a.score || 0) - (b.score || 0),
-        render: (value: number) => <span className="lg-num">{value || 0}</span>,
+        render: (value: number) => <span className="lg-num">{formatCount(value)}</span>,
       },
       {
         title: t('pages.vpngate.columns.sessions'),
         dataIndex: 'sessions',
         width: 100,
         responsive: ['md'],
-        render: (value: number) => <span className="lg-num">{value || 0}</span>,
+        render: (value: number) => <span className="lg-num">{formatCount(value)}</span>,
       },
       {
         title: '',
@@ -605,16 +618,16 @@ export default function VPNGatePage() {
     [t, action.isPending, connectToExit, exitOwners, selectedExit],
   );
 
-  const logsText = useMemo(() => {
+  // Each line keeps its text; its level only picks a colour so warnings and
+  // errors stand out of a long engine log.
+  const logLines = useMemo(() => {
     const entries = logsQuery.data ?? [];
-    if (entries.length === 0) return '';
-    return entries
-      .slice(-160)
-      .map((entry) =>
-        `[${entry.timestamp ?? ''}] ${entry.level ?? ''} ${entry.module ?? ''} ${entry.message ?? ''}`.trim(),
-      )
-      .join('\n');
+    return entries.slice(-160).map((entry) => ({
+      level: logLevelClass(entry.level, entry.message),
+      text: `[${entry.timestamp ?? ''}] ${entry.level ?? ''} ${entry.module ?? ''} ${entry.message ?? ''}`.trim(),
+    }));
   }, [logsQuery.data]);
+  const logsText = logLines.length > 0;
 
   const pageClass = `vpngate-page ${isDark ? 'is-dark' : ''} ${isUltra ? 'is-ultra' : ''}`.trim();
   const unavailable = supervisor && (!supervisor.enabled || !supervisor.available);
@@ -713,13 +726,17 @@ export default function VPNGatePage() {
                     message={t('pages.vpngate.unavailableTitle')}
                     description={
                       supervisor?.reason ||
-                      supervisor?.warning ||
+                      localizeSupervisorWarning(supervisor?.warning, t) ||
                       t('pages.vpngate.unavailableHint')
                     }
                   />
                 )}
                 {!unavailable && supervisor?.warning && (
-                  <Alert type="info" showIcon message={supervisor.warning} />
+                  <Alert
+                    type="info"
+                    showIcon
+                    message={localizeSupervisorWarning(supervisor.warning, t)}
+                  />
                 )}
                 {statusQuery.data?.engineError && (
                   <Alert
@@ -729,6 +746,78 @@ export default function VPNGatePage() {
                     description={statusQuery.data.engineError}
                   />
                 )}
+
+                {/* Status first: engine, exit, bindings and Xray at a glance, before
+                    the exit slots and the forms that change them. */}
+                <div className="vg-tiles">
+                  <div className="lg-card vg-tile">
+                    <span className="vg-tile-label">{t('pages.vpngate.tiles.engine')}</span>
+                    <div className="vg-tile-value">
+                      <span className={`lg-pill ${exitTone}`}>
+                        <span className="lg-dot" aria-hidden />
+                        {exitStateLabel}
+                      </span>
+                    </div>
+                    <span className="vg-tile-foot lg-mono">
+                      {t('pages.vpngate.tiles.deviceLine', {
+                        dev: selectedExit?.dev || '—',
+                        table: selectedExit?.table ?? '—',
+                      })}
+                    </span>
+                  </div>
+
+                  <div className="lg-card vg-tile">
+                    <span className="vg-tile-label">{t('pages.vpngate.tiles.exit')}</span>
+                    <div className="vg-tile-value">
+                      <span
+                        className={`lg-pill ${
+                          selectedExit && selectedExit.proxyOk === false
+                            ? 'bad'
+                            : selectedIp
+                              ? 'ok'
+                              : 'warn'
+                        }`}
+                      >
+                        <span className="lg-dot" aria-hidden />
+                        {selectedCountry || t('pages.vpngate.disconnected')}
+                      </span>
+                    </div>
+                    <span className="vg-tile-foot lg-num">
+                      {selectedIp || '—'}
+                      {selectedLatency > 0 ? ` · ${Math.round(selectedLatency)} ms` : ''}
+                    </span>
+                  </div>
+
+                  <div className="lg-card vg-tile">
+                    <span className="vg-tile-label">{t('pages.vpngate.tiles.boundInbounds')}</span>
+                    <div className="vg-tile-value">
+                      <span className={`lg-pill ${boundHere > 0 ? 'ok' : 'warn'}`}>
+                        <span className="lg-dot" aria-hidden />
+                        <span className="lg-num vg-tile-count">{boundHere}</span>
+                      </span>
+                    </div>
+                    <span className="vg-tile-foot">
+                      {t('pages.vpngate.tiles.boundInboundsFoot', {
+                        total: inbounds.length,
+                      })}
+                    </span>
+                  </div>
+
+                  <div className="lg-card vg-tile">
+                    <span className="vg-tile-label">{t('pages.vpngate.tiles.xray')}</span>
+                    <div className="vg-tile-value">
+                      <span className={`lg-pill ${outboundRegistered ? 'ok' : 'warn'}`}>
+                        <span className="lg-dot" aria-hidden />
+                        {selectedExit?.outboundTag || 'vpngate-out'}
+                      </span>
+                    </div>
+                    <span className="vg-tile-foot lg-mono">
+                      {t('pages.vpngate.tiles.outboundFoot', {
+                        port: selectedExit?.proxyPort ?? '—',
+                      })}
+                    </span>
+                  </div>
+                </div>
 
                 <ExitsPanel
                   data={exitsQuery.data}
@@ -884,76 +973,6 @@ export default function VPNGatePage() {
                     )}
                   </div>
                 </Card>
-
-                <div className="vg-tiles">
-                  <div className="lg-card vg-tile">
-                    <span className="vg-tile-label">{t('pages.vpngate.tiles.engine')}</span>
-                    <div className="vg-tile-value">
-                      <span className={`lg-pill ${exitTone}`}>
-                        <span className="lg-dot" aria-hidden />
-                        {exitStateLabel}
-                      </span>
-                    </div>
-                    <span className="vg-tile-foot lg-mono">
-                      {t('pages.vpngate.tiles.deviceLine', {
-                        dev: selectedExit?.dev || '—',
-                        table: selectedExit?.table ?? '—',
-                      })}
-                    </span>
-                  </div>
-
-                  <div className="lg-card vg-tile">
-                    <span className="vg-tile-label">{t('pages.vpngate.tiles.exit')}</span>
-                    <div className="vg-tile-value">
-                      <span
-                        className={`lg-pill ${
-                          selectedExit && selectedExit.proxyOk === false
-                            ? 'bad'
-                            : selectedIp
-                              ? 'ok'
-                              : 'warn'
-                        }`}
-                      >
-                        <span className="lg-dot" aria-hidden />
-                        {selectedCountry || t('pages.vpngate.disconnected')}
-                      </span>
-                    </div>
-                    <span className="vg-tile-foot lg-num">
-                      {selectedIp || '—'}
-                      {selectedLatency > 0 ? ` · ${Math.round(selectedLatency)} ms` : ''}
-                    </span>
-                  </div>
-
-                  <div className="lg-card vg-tile">
-                    <span className="vg-tile-label">{t('pages.vpngate.tiles.boundInbounds')}</span>
-                    <div className="vg-tile-value">
-                      <span className={`lg-pill ${boundHere > 0 ? 'ok' : 'warn'}`}>
-                        <span className="lg-dot" aria-hidden />
-                        <span className="lg-num vg-tile-count">{boundHere}</span>
-                      </span>
-                    </div>
-                    <span className="vg-tile-foot">
-                      {t('pages.vpngate.tiles.boundInboundsFoot', {
-                        total: inbounds.length,
-                      })}
-                    </span>
-                  </div>
-
-                  <div className="lg-card vg-tile">
-                    <span className="vg-tile-label">{t('pages.vpngate.tiles.xray')}</span>
-                    <div className="vg-tile-value">
-                      <span className={`lg-pill ${outboundRegistered ? 'ok' : 'warn'}`}>
-                        <span className="lg-dot" aria-hidden />
-                        {selectedExit?.outboundTag || 'vpngate-out'}
-                      </span>
-                    </div>
-                    <span className="vg-tile-foot lg-mono">
-                      {t('pages.vpngate.tiles.outboundFoot', {
-                        port: selectedExit?.proxyPort ?? '—',
-                      })}
-                    </span>
-                  </div>
-                </div>
 
                 <Card
                   id="vg-routing"
@@ -1180,7 +1199,12 @@ export default function VPNGatePage() {
                 >
                   {logsText ? (
                     <pre className="lg-log" aria-live="polite">
-                      {logsText}
+                      {logLines.map((line, index) => (
+                        <span key={index} className={`lg-log-line ${line.level}`}>
+                          {line.text}
+                          {'\n'}
+                        </span>
+                      ))}
                     </pre>
                   ) : (
                     <Empty

@@ -84,7 +84,66 @@ COUNTRY_TRANSLATIONS = {
     "Macau": "澳门",
     "Iceland": "冰岛",
     "Luxembourg": "卢森堡",
+    # Countries VPNGate lists less often; without them the node table fell back
+    # to the English name next to Chinese ones.
+    "Estonia": "爱沙尼亚",
+    "Latvia": "拉脱维亚",
+    "Lithuania": "立陶宛",
+    "Croatia": "克罗地亚",
+    "Slovenia": "斯洛文尼亚",
+    "Slovakia": "斯洛伐克",
+    "Serbia": "塞尔维亚",
+    "Bulgaria": "保加利亚",
+    "Czechia": "捷克",
+    "Belarus": "白俄罗斯",
+    "Moldova": "摩尔多瓦",
+    "Armenia": "亚美尼亚",
+    "Azerbaijan": "阿塞拜疆",
+    "Uzbekistan": "乌兹别克斯坦",
+    "Pakistan": "巴基斯坦",
+    "Bangladesh": "孟加拉国",
+    "Sri Lanka": "斯里兰卡",
+    "Nepal": "尼泊尔",
+    "Myanmar": "缅甸",
+    "Laos": "老挝",
+    "Qatar": "卡塔尔",
+    "Kuwait": "科威特",
+    "Morocco": "摩洛哥",
+    "Algeria": "阿尔及利亚",
+    "Tunisia": "突尼斯",
+    "Nigeria": "尼日利亚",
+    "Kenya": "肯尼亚",
+    "Peru": "秘鲁",
+    "Venezuela": "委内瑞拉",
+    "Ecuador": "厄瓜多尔",
+    "Bolivia": "玻利维亚",
+    "Uruguay": "乌拉圭",
+    "Paraguay": "巴拉圭",
+    "Panama": "巴拿马",
+    "Costa Rica": "哥斯达黎加",
+    "Puerto Rico": "波多黎各",
+    "Cyprus": "塞浦路斯",
+    "Malta": "马耳他",
+    "Albania": "阿尔巴尼亚",
+    "Bosnia and Herzegovina": "波黑",
+    "North Macedonia": "北马其顿",
+    "Montenegro": "黑山",
 }
+
+
+def translate_country(country_long: str) -> str:
+    """Chinese display name for a VPNGate CountryLong value.
+
+    VPNGate sometimes appends the local spelling ("Croatia (LOCAL Name: Hrvatska)");
+    that suffix is dropped before the lookup. Unknown names are returned as given.
+    """
+    raw = (country_long or "").strip()
+    if not raw:
+        return country_long or ""
+    if raw in COUNTRY_TRANSLATIONS:
+        return COUNTRY_TRANSLATIONS[raw]
+    base = raw.split(" (LOCAL Name:", 1)[0].strip()
+    return COUNTRY_TRANSLATIONS.get(base, base or raw)
 
 def _safe_int(val: Any, default: int = 0) -> int:
     try:

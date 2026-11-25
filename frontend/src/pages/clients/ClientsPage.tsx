@@ -97,6 +97,7 @@ import { ClientInboundChips, ClientRowActions } from './RowCells';
 import { emptyFilters, activeFilterCount } from './filters';
 import type { ClientFilters } from './filters';
 import './ClientsPage.css';
+import ListEmpty from '@/components/ListEmpty';
 
 const FILTER_STATE_KEY = 'clientsFilterState';
 const DISABLED_PAGE_SIZE = 200;
@@ -1061,7 +1062,7 @@ export default function ClientsPage() {
       {
         title: t('pages.clients.actions'),
         key: 'actions',
-        width: 200,
+        width: 176,
         render: (_v, record) => (
           <ClientRowActions
             email={record.email}
@@ -1121,7 +1122,7 @@ export default function ClientsPage() {
       {
         title: t('pages.clients.client'),
         key: 'email',
-        width: 220,
+        width: 264,
         render: (_v, record) => (
           <div className="email-cell">
             <span className="email">{record.email}</span>
@@ -1180,7 +1181,7 @@ export default function ClientsPage() {
       {
         title: t('pages.clients.traffic'),
         key: 'traffic',
-        width: 300,
+        width: 260,
         render: (_v, record) => (
           <ClientTrafficCell
             up={record.traffic?.up}
@@ -1304,7 +1305,6 @@ export default function ClientsPage() {
         <AppSidebar />
 
         <Layout className="content-shell">
-
           <TopStatusBar />
           <Layout.Content id="content-layout" className="content-area">
             <Spin
@@ -1717,13 +1717,11 @@ export default function ClientsPage() {
                           onChange={onTableChange}
                           locale={{
                             emptyText: (
-                              <div className="clients-empty">
-                                <TeamOutlined
-                                  aria-hidden
-                                  style={{ fontSize: 32, marginBottom: 8 }}
-                                />
-                                <div>{t('noData')}</div>
-                              </div>
+                              <ListEmpty
+                                icon={<TeamOutlined />}
+                                actionLabel={t('pages.clients.addClients')}
+                                onAction={onAdd}
+                              />
                             ),
                           }}
                         />
@@ -1745,10 +1743,11 @@ export default function ClientsPage() {
                               </div>
                             )}
                             {filteredClients.length === 0 && (
-                              <div className="card-empty">
-                                <TeamOutlined aria-hidden style={{ fontSize: 28, opacity: 0.5 }} />
-                                <div>{t('noData')}</div>
-                              </div>
+                              <ListEmpty
+                                icon={<TeamOutlined />}
+                                actionLabel={t('pages.clients.addClients')}
+                                onAction={onAdd}
+                              />
                             )}
                             {filteredClients.length > 0 && (
                               <div className="card-pagination">

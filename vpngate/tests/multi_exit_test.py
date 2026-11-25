@@ -153,7 +153,7 @@ class ExitSandbox(unittest.TestCase):
     def write_legacy_config(self, **extra: object) -> dict:
         config = {
             "username": "admin",
-            "password": "",
+            "password": "exit-test-Passw0rd",
             "secret_path": "secret",
             "routing_mode": "fixed_region",
             "force_country": "JP",
@@ -217,7 +217,7 @@ class MigrationTests(ExitSandbox):
     def test_migration_keeps_ui_auth_as_routing_owner(self) -> None:
         self.write_legacy_config()
         vm.exit_manager.load()
-        # load_ui_config fills its own defaults (a generated password, host and
+        # load_ui_config fills its own defaults (a hashed password, host and
         # port) exactly as it did before multi-exit; the routing keys must keep
         # their values, and they stay the single owner of exit 1's policy.
         stored = json.loads((self.data_dir / "ui_auth.json").read_text(encoding="utf-8"))
@@ -392,7 +392,7 @@ class HttpTests(ExitSandbox):
         self.login()
 
     def login(self) -> None:
-        payload = json.dumps({"username": "admin", "password": vm.load_ui_config()["password"]}).encode()
+        payload = json.dumps({"username": "admin", "password": "exit-test-Passw0rd"}).encode()
         req = urllib.request.Request(
             f"http://127.0.0.1:{self.port}/secret/api/login",
             data=payload,

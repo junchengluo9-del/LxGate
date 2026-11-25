@@ -78,10 +78,12 @@ export const PALETTE_KEYWORDS: Record<string, string[]> = {
   '/groups': ['groups', 'tags', 'batch'],
   '/nodes': ['nodes', 'servers', 'cluster', 'remote nodes'],
   '/hosts': ['hosts', 'sni', 'domains'],
+  '/vpngate': ['vpngate', 'openvpn', 'exit', 'residential', 'nodes', 'country'],
   '/outbound': ['outbounds', 'freedom', 'blackhole', 'socks', 'http', 'warp', 'nord', 'pia'],
   '/routing': ['routing', 'rules', 'geoip', 'geosite', 'direct', 'block'],
   '/settings': ['settings', 'config', 'port', 'password', 'ssl', 'telegram'],
   '/xray': ['xray', 'templates', 'balancer', 'dns'],
+  '/system': ['system', 'update', 'version', 'release', 'upgrade', 'token'],
   '/api-docs': ['api', 'api docs', 'swagger', 'rest api', 'endpoints'],
 };
 

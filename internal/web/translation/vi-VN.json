@@ -313,7 +313,11 @@
         "mlkem": "Lõi này (Xray v26.9.8+) yêu cầu client hỗ trợ ML-KEM: chỉ client Xray-core mới (v2rayN/v2rayNG, fp chrome) và Mihomo bật support-x25519mlkem768 mới kết nối được. Shadowrocket, Clash cũ và sing-box sẽ KHÔNG hoạt động. Lõi tương thích mọi client là v26.6.27. Vẫn chuyển sang #version#?",
         "minver": "Lõi này (v26.7.11–v26.9.7) mặc định từ chối client không báo phiên bản Xray: Shadowrocket, Clash/Mihomo và sing-box sẽ KHÔNG hoạt động. Lõi tương thích là v26.6.27. Vẫn chuyển sang #version#?"
       },
-      "xraySwitchAnyway": "Vẫn chuyển"
+      "xraySwitchAnyway": "Vẫn chuyển",
+      "currentExit": {
+        "notConfigured": "Chưa cấu hình lối ra",
+        "notConfiguredHint": "Chọn một nút trên trang VPNGate để định tuyến lưu lượng qua lối ra dân cư."
+      }
     },
     "inbounds": {
       "totalDownUp": "Tổng tải lên/tải xuống",
@@ -2413,7 +2417,8 @@
       "defaultOutboundDesc": "Lưu lượng không khớp quy tắc định tuyến dùng outbound này (mục đầu danh sách).",
       "routingScript": "Script định tuyến",
       "routingScriptDesc": "Đường dẫn tới tệp .lua định nghĩa HandleRoute, tuyệt đối hoặc tương đối với thư mục bin của Xray. Khi đó script chọn mọi tuyến và Xray bỏ qua tất cả quy tắc định tuyến, kể cả quy tắc api của panel: hãy chuyển inbound api tới outbound api, nếu không thống kê lưu lượng và việc áp dụng thay đổi client trực tiếp sẽ dừng. Xray sẽ không khởi động nếu tệp không tồn tại hoặc không hợp lệ.",
-      "routingScriptActive": "Một script định tuyến đã được đặt trong {section}, nên Xray bỏ qua các quy tắc này."
+      "routingScriptActive": "Một script định tuyến đã được đặt trong {section}, nên Xray bỏ qua các quy tắc này.",
+      "addOutbound": "Thêm outbound"
     },
     "hosts": {
       "addHost": "Thêm Host",
@@ -2535,6 +2540,14 @@
         "badVlessRoute": "Nhập một số duy nhất từ 0 đến 65535"
       },
       "dragToReorder": "Kéo để sắp xếp lại {name}"
+    },
+    "vpngate": {
+      "openvpnMissing": "Máy chủ này chưa cài openvpn: engine vẫn chạy và liệt kê node, nhưng kết nối lối ra sẽ thất bại cho đến khi cài openvpn."
+    },
+    "system": {
+      "checkFailedTag": "Kiểm tra thất bại",
+      "checkFailedFriendly": "Không thể kết nối kho phát hành. Bảng điều khiển vẫn hoạt động; hãy thử lại sau.",
+      "showRawError": "Xem lỗi gốc"
     }
   },
   "tgbot": {
@@ -2887,5 +2900,9 @@
     "restartXray": "Khởi động lại dịch vụ Xray",
     "restartXraySuccess": "Dịch vụ Xray đã được khởi động lại thành công",
     "settings": "Cài đặt"
+  },
+  "emptyState": {
+    "title": "Chưa có gì ở đây",
+    "hint": "Thêm mục đầu tiên để bắt đầu; nó sẽ hiện trong danh sách này."
   }
 }

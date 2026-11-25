@@ -132,10 +132,34 @@ body :is(.ant-layout, .ant-layout-content) {
 
 /* Every page container defers to the shared canvas variables, so the old
    per-page #e6e8ec / #1a1b1f pairs no longer paint over the glass backdrop. */
-body.light :is(.index-page, .clients-page, .inbounds-page, .xray-page, .settings-page,
-    .nodes-page, .hosts-page, .groups-page, .api-docs-page, .vpngate-page, .system-page),
-body.dark :is(.index-page, .clients-page, .inbounds-page, .xray-page, .settings-page,
-    .nodes-page, .hosts-page, .groups-page, .api-docs-page, .vpngate-page, .system-page) {
+body.light
+  :is(
+    .index-page,
+    .clients-page,
+    .inbounds-page,
+    .xray-page,
+    .settings-page,
+    .nodes-page,
+    .hosts-page,
+    .groups-page,
+    .api-docs-page,
+    .vpngate-page,
+    .system-page
+  ),
+body.dark
+  :is(
+    .index-page,
+    .clients-page,
+    .inbounds-page,
+    .xray-page,
+    .settings-page,
+    .nodes-page,
+    .hosts-page,
+    .groups-page,
+    .api-docs-page,
+    .vpngate-page,
+    .system-page
+  ) {
   --bg-page: transparent;
   --bg-card: var(--lg-surface);
   min-height: 100vh;
@@ -259,7 +283,9 @@ body :is(.ant-btn) {
 }
 
 body :is(.ant-btn-primary) {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12), 0 6px 16px var(--lg-accent-soft);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.12),
+    0 6px 16px var(--lg-accent-soft);
 }
 
 body :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector) {
@@ -401,7 +427,9 @@ body :is(.ant-segmented-item-selected) {
   padding: 12px 14px;
   border-radius: var(--lg-radius-md);
   border: 1px solid var(--lg-border);
-  background: color-mix(in srgb, var(--lg-canvas) 88%, #000 12%);
+  /* Light mode reads the log on a soft paper surface; dark mode keeps the
+     recessed panel. */
+  background: color-mix(in srgb, var(--lg-canvas) 96%, #0f172a 4%);
   color: var(--lg-text);
   font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 0.76rem;
@@ -439,4 +467,29 @@ body :is(.ant-segmented-item-selected) {
   .ant-card {
     transition: none;
   }
+}
+
+body.dark .lg-log {
+  background: color-mix(in srgb, var(--lg-canvas) 88%, #000 12%);
+}
+
+.lg-log-line {
+  display: block;
+  padding-inline: 6px;
+  margin-inline: -6px;
+  border-radius: 4px;
+}
+
+.lg-log-line.is-info {
+  color: var(--lg-text-dim);
+}
+
+.lg-log-line.is-warn {
+  color: var(--lg-warn);
+  background: color-mix(in srgb, var(--lg-warn) 8%, transparent);
+}
+
+.lg-log-line.is-error {
+  color: var(--lg-bad);
+  background: color-mix(in srgb, var(--lg-bad) 9%, transparent);
 }

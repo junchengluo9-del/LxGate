@@ -262,3 +262,31 @@ body.dark .ant-dropdown-menu-item-divider {
     padding: 8px;
   }
 }
+
+/* Save bar of the Xray and panel settings pages: a slim strip that stays at the
+   top while the long forms scroll beneath it, instead of a full card that the
+   save button scrolled away with. The button itself keeps its disabled state
+   until something changed, so the bar lights up only with unsaved edits. */
+.lg-savebar {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+  border-radius: 14px;
+  backdrop-filter: blur(16px) saturate(140%);
+  background: color-mix(in srgb, var(--ant-color-bg-container) 86%, transparent) !important;
+  box-shadow: 0 6px 20px -14px rgba(15, 23, 42, 0.4);
+}
+
+.lg-savebar > .ant-card-body {
+  padding: 10px 16px;
+}
+
+.lg-savebar .ant-alert {
+  padding-block: 4px;
+}
+
+.lg-savebar:has(.header-actions .ant-btn-primary:not(:disabled)) {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ant-color-primary) 45%, transparent),
+    0 10px 24px -14px color-mix(in srgb, var(--ant-color-primary) 70%, transparent);
+}

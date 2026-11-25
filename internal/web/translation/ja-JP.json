@@ -313,7 +313,11 @@
         "mlkem": "このコア（Xray v26.9.8 以降）は ML-KEM 対応クライアントが必要です。接続できるのは最新の Xray-core クライアント（v2rayN/v2rayNG、fp chrome）と support-x25519mlkem768 を有効にした Mihomo のみで、Shadowrocket・旧 Clash・sing-box は使えません。全クライアント互換のコアは v26.6.27 です。それでも #version# に切り替えますか？",
         "minver": "このコア（v26.7.11–v26.9.7）は Xray バージョンを送らないクライアントを既定で拒否します。Shadowrocket・Clash/Mihomo・sing-box は使えません。互換コアは v26.6.27 です。それでも #version# に切り替えますか？"
       },
-      "xraySwitchAnyway": "それでも切り替える"
+      "xraySwitchAnyway": "それでも切り替える",
+      "currentExit": {
+        "notConfigured": "出口はまだ設定されていません",
+        "notConfiguredHint": "VPNGate ページでノードを選ぶと、住宅出口経由でトラフィックを転送できます。"
+      }
     },
     "inbounds": {
       "totalDownUp": "総アップロード / ダウンロード",
@@ -2413,7 +2417,8 @@
       "defaultOutboundDesc": "ルーティング規則に一致しないトラフィックはこのアウトバウンドを使います（一覧の先頭）。",
       "routingScript": "ルーティングスクリプト",
       "routingScriptDesc": "HandleRoute を定義した .lua ファイルのパス（絶対パス、または Xray の bin フォルダからの相対パス）。設定するとスクリプトがすべての経路を選び、Xray はパネルの api ルールを含むすべてのルーティングルールを無視します。api インバウンドを api アウトバウンドへ送らないと、トラフィック統計とクライアント変更の即時反映が止まります。ファイルが存在しないか不正な場合、Xray は起動しません。",
-      "routingScriptActive": "{section} でルーティングスクリプトが設定されているため、Xray はこれらのルールを無視します。"
+      "routingScriptActive": "{section} でルーティングスクリプトが設定されているため、Xray はこれらのルールを無視します。",
+      "addOutbound": "アウトバウンドを追加"
     },
     "hosts": {
       "addHost": "ホストを追加",
@@ -2535,6 +2540,14 @@
         "badVlessRoute": "0〜65535 の単一の数値を入力してください"
       },
       "dragToReorder": "ドラッグして {name} を並べ替え"
+    },
+    "vpngate": {
+      "openvpnMissing": "このホストには openvpn がインストールされていません。エンジンは動作しノード一覧も表示できますが、openvpn をインストールするまで出口への接続は失敗します。"
+    },
+    "system": {
+      "checkFailedTag": "確認に失敗",
+      "checkFailedFriendly": "リリースリポジトリに接続できません。パネルは引き続き動作します。後でもう一度お試しください。",
+      "showRawError": "元のエラーを表示"
     }
   },
   "tgbot": {
@@ -2887,5 +2900,9 @@
     "restartXray": "Xrayサービスを再起動",
     "restartXraySuccess": "Xrayサービスが正常に再起動されました",
     "settings": "設定"
+  },
+  "emptyState": {
+    "title": "まだ何もありません",
+    "hint": "最初の項目を追加すると、この一覧に表示されます。"
   }
 }

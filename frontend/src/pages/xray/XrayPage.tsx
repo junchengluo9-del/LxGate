@@ -318,7 +318,6 @@ export default function XrayPage() {
         <AppSidebar />
 
         <Layout className="content-shell">
-
           <TopStatusBar />
           <Layout.Content id="content-layout" className="content-area">
             <Spin
@@ -344,7 +343,7 @@ export default function XrayPage() {
               ) : (
                 <Row gutter={[isMobile ? 8 : 16, isMobile ? 0 : 12]}>
                   <Col span={24}>
-                    <Card hoverable>
+                    <Card hoverable className="lg-savebar">
                       <Row className="header-row">
                         <Col xs={24} sm={14} className="header-actions">
                           <Space>

@@ -556,7 +556,7 @@ export default function OutboundsTab({
           <Col xs={24} sm={12}>
             <Space size="small" wrap>
               <Button type="primary" icon={<PlusOutlined aria-hidden />} onClick={openAdd}>
-                {!isMobile && t('pages.xray.Outbounds')}
+                {!isMobile && t('pages.xray.addOutbound')}
               </Button>
               <Button icon={<CloudOutlined aria-hidden />} onClick={openSubManager}>
                 {t('pages.xray.outboundSub.manage')}

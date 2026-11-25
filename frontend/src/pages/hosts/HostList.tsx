@@ -16,6 +16,7 @@ import type { HostRecord } from '@/api/queries/useHostsQuery';
 import type { InboundOption } from '@/schemas/client';
 import { usePointerRowReorder, type PointerRowDrop } from '@/hooks/usePointerRowReorder';
 import './HostList.css';
+import ListEmpty from '@/components/ListEmpty';
 
 interface HostListProps {
   hosts: HostRecord[];
@@ -365,10 +366,11 @@ export default function HostList(props: HostListProps) {
         }}
         locale={{
           emptyText: (
-            <div className="card-empty">
-              <GlobalOutlined aria-hidden style={{ fontSize: 32, marginBottom: 8 }} />
-              <div>{t('noData')}</div>
-            </div>
+            <ListEmpty
+              icon={<GlobalOutlined />}
+              actionLabel={t('pages.hosts.addHost')}
+              onAction={onAdd}
+            />
           ),
         }}
       />

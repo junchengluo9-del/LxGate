@@ -72,6 +72,7 @@ OpenVPN is started with `--route-nopull` plus policy routing on `tun0`, so a VPN
 | `LXGATE_VPNGATE_SCRIPT` | auto-detected | Path to `vpngate/vpngate_manager.py`. |
 | `LXGATE_VPNGATE_TOKEN` | generated | Override the shared engine token. |
 | `LXGATE_DOCKER` | unset | Force Docker mode for the update endpoints. |
+| `LXGATE_VPNGATE_INSECURE_TLS` | `0` | Allow node-list fetches to retry without certificate checks / over plain HTTP. Off by default: a forged node list can steer traffic to an attacker-run server. Only enable behind a TLS-intercepting proxy you trust. |
 
 The panel's own `LXGATE_*` / legacy `XUI_*` variables keep working exactly as before (see `.env.example`).
 
@@ -174,6 +175,7 @@ OpenVPN 以 `--route-nopull` 启动并在 `tun0` 上做策略路由，因此 VPN
 | `LXGATE_VPNGATE_SCRIPT` | 自动探测 | `vpngate/vpngate_manager.py` 路径。 |
 | `LXGATE_VPNGATE_TOKEN` | 自动生成 | 覆盖引擎共享令牌。 |
 | `LXGATE_DOCKER` | 未设置 | 强制更新接口使用 Docker 模式。 |
+| `LXGATE_VPNGATE_INSECURE_TLS` | `0` | 允许节点列表在证书校验失败时以不校验证书 / 明文 HTTP 重试。默认关闭：伪造的节点列表可把流量引向攻击者的服务器，仅在可信的 TLS 中间代理环境下开启。 |
 
 面板原有 `LXGATE_*` / 兼容 `XUI_*` 变量完全照旧可用（见 `.env.example`）。
 

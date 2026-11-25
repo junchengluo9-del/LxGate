@@ -313,7 +313,11 @@
         "mlkem": "Este núcleo (Xray v26.9.8+) requiere clientes con ML-KEM: solo se conectan clientes Xray-core actuales (v2rayN/v2rayNG, fp chrome) y Mihomo con support-x25519mlkem768. Shadowrocket, Clash antiguo y sing-box NO funcionarán. El núcleo compatible con todos los clientes es v26.6.27. ¿Cambiar a #version# de todos modos?",
         "minver": "Este núcleo (v26.7.11–v26.9.7) rechaza por defecto a los clientes que no informan versión de Xray: Shadowrocket, Clash/Mihomo y sing-box NO funcionarán. El núcleo compatible es v26.6.27. ¿Cambiar a #version# de todos modos?"
       },
-      "xraySwitchAnyway": "Cambiar de todos modos"
+      "xraySwitchAnyway": "Cambiar de todos modos",
+      "currentExit": {
+        "notConfigured": "Aún no hay salida configurada",
+        "notConfiguredHint": "Elige un nodo en la página VPNGate para enrutar el tráfico por una salida residencial."
+      }
     },
     "inbounds": {
       "totalDownUp": "Subidas/Descargas Totales",
@@ -2413,7 +2417,8 @@
       "defaultOutboundDesc": "El tráfico que no coincide con ninguna regla de enrutamiento usa esta salida (la primera de la lista).",
       "routingScript": "Script de enrutamiento",
       "routingScriptDesc": "Ruta a un archivo .lua que define HandleRoute, absoluta o relativa a la carpeta bin de Xray. El script elige entonces cada ruta y Xray ignora todas las reglas de enrutamiento, incluida la regla api del panel: envía el inbound api al outbound api o se detendrán las estadísticas de tráfico y los cambios de clientes en vivo. Xray no arrancará si el archivo falta o no es válido.",
-      "routingScriptActive": "Hay un script de enrutamiento definido en {section}, así que Xray ignora estas reglas."
+      "routingScriptActive": "Hay un script de enrutamiento definido en {section}, así que Xray ignora estas reglas.",
+      "addOutbound": "Añadir outbound"
     },
     "hosts": {
       "addHost": "Agregar host",
@@ -2535,6 +2540,14 @@
         "badVlessRoute": "Introduce un único número entre 0 y 65535"
       },
       "dragToReorder": "Arrastra para reordenar {name}"
+    },
+    "vpngate": {
+      "openvpnMissing": "openvpn no está instalado en este servidor: el motor funciona y lista los nodos, pero conectar una salida fallará hasta que se instale openvpn."
+    },
+    "system": {
+      "checkFailedTag": "Comprobación fallida",
+      "checkFailedFriendly": "No se pudo contactar con el repositorio de versiones. El panel sigue funcionando; inténtalo más tarde.",
+      "showRawError": "Ver el error original"
     }
   },
   "tgbot": {
@@ -2887,5 +2900,9 @@
     "restartXray": "Reiniciar servicio Xray",
     "restartXraySuccess": "El servicio Xray se ha reiniciado con éxito",
     "settings": "Configuración"
+  },
+  "emptyState": {
+    "title": "Aún no hay nada aquí",
+    "hint": "Añade el primero para empezar; aparecerá en esta lista."
   }
 }

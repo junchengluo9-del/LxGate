@@ -313,7 +313,11 @@
         "mlkem": "This core (Xray v26.9.8+) requires ML-KEM-capable clients: only current Xray-core clients (v2rayN/v2rayNG, fp chrome) and Mihomo with support-x25519mlkem768 can connect. Shadowrocket, older Clash and sing-box will NOT work (online but no traffic). The client-compatible core is v26.6.27. Switch to #version# anyway?",
         "minver": "This core (v26.7.11–v26.9.7) rejects clients that do not report an Xray version by default: Shadowrocket, Clash/Mihomo and sing-box will NOT work. The client-compatible core is v26.6.27. Switch to #version# anyway?"
       },
-      "xraySwitchAnyway": "Switch anyway"
+      "xraySwitchAnyway": "Switch anyway",
+      "currentExit": {
+        "notConfigured": "Zatiaľ nie je nastavený žiadny výstup",
+        "notConfiguredHint": "Vyberte uzol na stránke VPNGate a smerujte prevádzku cez rezidenčný výstup."
+      }
     },
     "inbounds": {
       "totalDownUp": "Celkom odoslané/prijaté",
@@ -2534,7 +2538,16 @@
       "defaultOutboundDesc": "Prevádzka bez zhody s pravidlom smerovania použije tento výstup. Xray používa prvý výstup v zozname.",
       "routingScript": "Skript smerovania",
       "routingScriptDesc": "Cesta k súboru .lua s funkciou HandleRoute, absolútna alebo vzhľadom na priečinok bin Xray. Skript vyberá každú trasu a Xray ignoruje všetky pravidlá vrátane pravidla api panelu. Vstup api preto smerujte na výstup api, inak prestanú fungovať štatistiky spotreby aj zmeny klientov za behu. Ak súbor chýba alebo je neplatný, Xray sa nespustí.",
-      "routingScriptActive": "V časti {section} je nastavený skript smerovania, preto Xray tieto pravidlá ignoruje."
+      "routingScriptActive": "V časti {section} je nastavený skript smerovania, preto Xray tieto pravidlá ignoruje.",
+      "addOutbound": "Pridať outbound"
+    },
+    "vpngate": {
+      "openvpnMissing": "Na tomto hostiteľovi nie je nainštalovaný openvpn: engine beží a zobrazuje uzly, ale pripojenie výstupu zlyhá, kým sa openvpn nenainštaluje."
+    },
+    "system": {
+      "checkFailedTag": "Kontrola zlyhala",
+      "checkFailedFriendly": "Nepodarilo sa spojiť s repozitárom vydaní. Panel funguje ďalej; skúste to neskôr.",
+      "showRawError": "Zobraziť pôvodnú chybu"
     }
   },
   "tgbot": {
@@ -2887,5 +2900,9 @@
     "restartXray": "Reštartovať službu Xray",
     "restartXraySuccess": "Xray bol úspešne reštartovaný",
     "settings": "Nastavenia"
+  },
+  "emptyState": {
+    "title": "Zatiaľ tu nič nie je",
+    "hint": "Pridajte prvú položku; zobrazí sa v tomto zozname."
   }
 }

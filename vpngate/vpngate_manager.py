@@ -147,6 +147,12 @@ def env_flag(name: str, default: bool = False) -> bool:
 # the bind address (loopback only), the access path (no secret prefix, no login
 # form), the authentication (shared token header) and who owns updates/ports.
 EMBEDDED_MODE = env_flag("LXGATE_EMBEDDED", False)
+
+# Node-list fetches always verify TLS certificates. A forged node list can steer
+# traffic to an attacker-run OpenVPN server, so falling back to an unverified
+# HTTPS fetch (or to plain http://) is only allowed when the operator opts in
+# explicitly, e.g. behind a TLS-intercepting corporate proxy.
+INSECURE_TLS = env_flag("LXGATE_VPNGATE_INSECURE_TLS", env_flag("VPNGATE_INSECURE_TLS", False))
 LXGATE_API_TOKEN = os.environ.get("LXGATE_API_TOKEN", "").strip()
 LXGATE_AUTH_HEADER = "X-LxGate-Token"
 LXGATE_DISABLE_SELF_UPDATE = env_flag("LXGATE_DISABLE_SELF_UPDATE", EMBEDDED_MODE)
@@ -229,6 +235,7 @@ def read_json(path: Path, default: Any) -> Any:
 import hashlib
 import hmac
 import random
+import secrets
 
 def generate_random_password() -> str:
     import string
@@ -255,13 +262,67 @@ def generate_random_username() -> str:
             if has_lower and has_upper and has_digit:
                 return uname
 
+# Public default of older releases; installs still carrying it get a random path.
+LEGACY_DEFAULT_SECRET_PATHS = {"EJsW2EeBo9lY"}
+SESSION_TTL_SECONDS = 7 * 24 * 3600
+LOGIN_MAX_FAILURES = 5
+LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60
+login_failures: dict[str, list[float]] = {}
+
+def generate_random_secret_path(length: int = 16) -> str:
+    import string
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+def hash_ui_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    n, r, p = 2 ** 14, 8, 1
+    digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=n, r=r, p=p, dklen=32)
+    return "scrypt${}${}${}${}${}".format(
+        n, r, p, base64.b64encode(salt).decode("ascii"), base64.b64encode(digest).decode("ascii")
+    )
+
+def verify_ui_password(stored_hash: str, password: str) -> bool:
+    try:
+        scheme, n, r, p, salt_b64, digest_b64 = str(stored_hash).split("$")
+        if scheme != "scrypt":
+            return False
+        expected = base64.b64decode(digest_b64)
+        actual = hashlib.scrypt(
+            password.encode("utf-8"), salt=base64.b64decode(salt_b64),
+            n=int(n), r=int(r), p=int(p), dklen=len(expected),
+        )
+        return hmac.compare_digest(actual, expected)
+    except (ValueError, TypeError):
+        return False
+
+def purge_expired_sessions(now: float | None = None) -> None:
+    now = time.time() if now is None else now
+    with lock:
+        for token in [t for t, exp in active_sessions.items() if exp <= now]:
+            active_sessions.pop(token, None)
+
+def login_blocked(client_ip: str, now: float | None = None) -> bool:
+    now = time.time() if now is None else now
+    with lock:
+        recent = [t for t in login_failures.get(client_ip, []) if now - t < LOGIN_FAILURE_WINDOW_SECONDS]
+        if recent:
+            login_failures[client_ip] = recent
+        else:
+            login_failures.pop(client_ip, None)
+        return len(recent) >= LOGIN_MAX_FAILURES
+
+def record_login_failure(client_ip: str) -> None:
+    with lock:
+        login_failures.setdefault(client_ip, []).append(time.time())
+
 def load_ui_config() -> dict[str, Any]:
     with lock:
         auth_file = DATA_DIR / "ui_auth.json"
         config = {
             "username": "",
-            "secret_path": "EJsW2EeBo9lY",
-            "password": "",
+            "secret_path": "",
+            "password_hash": "",
             "host": UI_HOST,
             "port": UI_PORT,
             "proxy_port": LOCAL_PROXY_PORT,
@@ -289,9 +350,26 @@ def load_ui_config() -> dict[str, Any]:
             config["username"] = generate_random_username()
             updated = True
             
-        if not config.get("password"):
-            config["password"] = generate_random_password()
+        legacy_pwd = config.pop("password", None)
+        if legacy_pwd and not config.get("password_hash"):
+            # Older versions stored the password in clear text: migrate it.
+            config["password_hash"] = hash_ui_password(str(legacy_pwd))
             updated = True
+        elif legacy_pwd is not None:
+            updated = True
+
+        if not config.get("password_hash"):
+            initial_pwd = generate_random_password()
+            config["password_hash"] = hash_ui_password(initial_pwd)
+            updated = True
+            if not EMBEDDED_MODE:
+                print(f"[Auth] 已生成初始管理员账号: {config['username']} / {initial_pwd}（仅显示一次，请登录后修改）", flush=True)
+
+        if not EMBEDDED_MODE and (not config.get("secret_path") or config.get("secret_path") in LEGACY_DEFAULT_SECRET_PATHS):
+            # The old hard-coded default is public in the repository: rotate it.
+            config["secret_path"] = generate_random_secret_path()
+            updated = True
+            print(f"[Auth] 已生成随机管理后台路径: /{config['secret_path']}/", flush=True)
 
         normalized_port = bounded_int(config.get("port"), UI_PORT, 1, 65535)
         if normalized_port != config.get("port"):
@@ -321,6 +399,10 @@ def load_ui_config() -> dict[str, Any]:
             try:
                 DATA_DIR.mkdir(exist_ok=True, parents=True)
                 auth_file.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+                try:
+                    auth_file.chmod(0o600)
+                except OSError:
+                    pass
             except Exception:
                 pass
                 
@@ -343,9 +425,6 @@ if not EMBEDDED_MODE:
     except Exception:
         pass
 
-def get_session_token(password: str, username: str = "admin") -> str:
-    salt = "aimilivpn_secure_salt_2026"
-    return hashlib.sha256((username + ":" + password + salt).encode("utf-8")).hexdigest()
 
 _last_cleanup_time = 0.0
 
@@ -427,8 +506,8 @@ def get_state() -> dict[str, Any]:
     ui_cfg = load_ui_config()
     state["username"] = ui_cfg.get("username", "admin")
     state["port"] = ui_cfg.get("port", 8787)
-    state["secret_path"] = ui_cfg.get("secret_path", "EJsW2EeBo9lY")
-    state["password_set"] = bool(ui_cfg.get("password"))
+    state["secret_path"] = ui_cfg.get("secret_path", "")
+    state["password_set"] = bool(ui_cfg.get("password_hash"))
     state["proxy_port"] = ui_cfg.get("proxy_port", 7928)
     state["routing_mode"] = ui_cfg.get("routing_mode", "auto")
     state["force_country"] = ui_cfg.get("force_country", "")
@@ -697,6 +776,9 @@ def fetch_api_text_via_proxy(url: str, ptype: str, phost: str, pport: int, use_s
 def fetch_api_text(url: str | None = None, use_ssl_verify: bool = True) -> str:
     if url is None:
         url = API_URL
+    if not INSECURE_TLS:
+        # Never skip certificate checks unless the operator opted in.
+        use_ssl_verify = True
     
     ptype, phost, pport = vpn_utils.get_upstream_proxy()
     if ptype and phost and pport:
@@ -776,7 +858,7 @@ def row_to_node(row: dict[str, str], config_text: str) -> dict[str, Any]:
     config_path = CONFIG_DIR / f"{node_id}.ovpn"
     
     country_long = row.get("CountryLong", "")
-    country_zh = vpn_utils.COUNTRY_TRANSLATIONS.get(country_long, vpn_utils.COUNTRY_TRANSLATIONS.get(country_long.strip(), country_long))
+    country_zh = vpn_utils.translate_country(country_long)
     return {
         "id": node_id,
         "country": country_zh,
@@ -814,17 +896,21 @@ def fetch_candidates() -> list[dict[str, Any]]:
     has_cache = len(cached_nodes()) > 0
     max_attempts = 1 if has_cache else 2
     
-    # 尝试 URLs 队列: 官方 API + 镜像 CSV
-    attempts_targets = [
-        (API_URL, True),
-        (API_URL, False),
-    ]
-    if API_URL.startswith("https://"):
-        attempts_targets.append((API_URL.replace("https://", "http://"), True))
+    # 尝试 URLs 队列: 官方 API + 镜像 CSV，默认全部校验证书。
+    # 关闭证书校验或回退到明文 http:// 会让中间人伪造节点列表，只有显式设置
+    # LXGATE_VPNGATE_INSECURE_TLS=1（兼容 VPNGATE_INSECURE_TLS=1）时才允许。
+    attempts_targets = [(API_URL, True)]
+    if INSECURE_TLS:
+        log_to_json("WARNING", "Main", "已启用 LXGATE_VPNGATE_INSECURE_TLS：证书校验失败时将以不安全方式重试，节点列表可能被中间人篡改")
+        attempts_targets.append((API_URL, False))
+        if API_URL.startswith("https://"):
+            attempts_targets.append((API_URL.replace("https://", "http://"), True))
     # 追加镜像源
     for src in MIRROR_SOURCES:
         if src.endswith(".csv"):
-            attempts_targets.append((src, False))
+            attempts_targets.append((src, True))
+            if INSECURE_TLS:
+                attempts_targets.append((src, False))
         
     log_to_json("INFO", "Main", "开始拉取官方 API 节点列表...")
     
@@ -5265,7 +5351,7 @@ INDEX_HTML = r"""<!doctype html>
 
         <div class="form-group" style="margin-bottom: 0;">
           <label class="form-label" for="cred_suffix">登录安全后缀 (仅字母和数字)</label>
-          <input type="text" id="cred_suffix" class="input-field" required pattern="[A-Za-z0-9]+" placeholder="EJsW2EeBo9lY" spellcheck="false" autocapitalize="off">
+          <input type="text" id="cred_suffix" class="input-field" required pattern="[A-Za-z0-9]+" placeholder="例如 a1B2c3D4e5F6g7H8" spellcheck="false" autocapitalize="off">
         </div>
 
         <div class="modal-actions">
@@ -7667,7 +7753,7 @@ def schedule_app_restart(reason: str = "代码已更新", delay: float = 2.0) ->
 class Handler(BaseHTTPRequestHandler):
     def get_secret_path(self) -> str:
         ui_cfg = load_ui_config()
-        return ui_cfg.get("secret_path", "EJsW2EeBo9lY")
+        return ui_cfg.get("secret_path", "")
 
     def is_authorized(self) -> bool:
         # Embedded mode: LxGate's Go backend presents the shared token. It is
@@ -7680,7 +7766,7 @@ class Handler(BaseHTTPRequestHandler):
             if EMBEDDED_MODE:
                 return False
         ui_cfg = load_ui_config()
-        pwd = ui_cfg.get("password")
+        pwd = ui_cfg.get("password_hash")
         if not pwd:
             print("[Auth] 管理后台密码为空，已拒绝访问。请检查 ui_auth.json。", flush=True)
             return False
@@ -7698,6 +7784,7 @@ class Handler(BaseHTTPRequestHandler):
         if not session_token:
             return False
             
+        purge_expired_sessions()
         with lock:
             exp_time = active_sessions.get(session_token)
             if exp_time is not None and exp_time > time.time():
@@ -8012,14 +8099,24 @@ class Handler(BaseHTTPRequestHandler):
                 input_pwd = str(payload.get("password") or "")
                 input_uname = str(payload.get("username") or "")
                 
+                client_ip = self.client_address[0] if self.client_address else ""
+                if login_blocked(client_ip):
+                    self.send_json({"ok": False, "error": "登录失败次数过多，请 15 分钟后再试"}, HTTPStatus.TOO_MANY_REQUESTS)
+                    return
+
                 ui_cfg = load_ui_config()
-                expected_pwd = ui_cfg.get("password", "")
-                expected_uname = ui_cfg.get("username", "admin")
-                
-                if expected_pwd and input_pwd == expected_pwd and input_uname == expected_uname:
-                    token = uuid.uuid4().hex
+                expected_hash = ui_cfg.get("password_hash", "")
+                expected_uname = str(ui_cfg.get("username", "admin"))
+
+                # Always run the (slow) hash check so a wrong username costs the same time.
+                pwd_ok = bool(expected_hash) and verify_ui_password(expected_hash, input_pwd)
+                uname_ok = hmac.compare_digest(input_uname.encode("utf-8"), expected_uname.encode("utf-8"))
+                if pwd_ok and uname_ok:
+                    token = secrets.token_hex(32)
+                    purge_expired_sessions()
                     with lock:
-                        active_sessions[token] = time.time() + 30 * 24 * 3600
+                        login_failures.pop(client_ip, None)
+                        active_sessions[token] = time.time() + SESSION_TTL_SECONDS
                     body = json.dumps({"ok": True}).encode("utf-8")
                     self.send_response(HTTPStatus.OK)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -8027,10 +8124,11 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_header("Cache-Control", "no-store")
                     secret_path = self.get_secret_path()
                     cookie_path = f"/{secret_path}/" if secret_path else "/"
-                    self.send_header("Set-Cookie", f"session={token}; Path={cookie_path}; HttpOnly; SameSite=Lax; Max-Age=2592000")
+                    self.send_header("Set-Cookie", f"session={token}; Path={cookie_path}; HttpOnly; SameSite=Lax; Max-Age={SESSION_TTL_SECONDS}")
                     self.end_headers()
                     self.wfile.write(body)
                 else:
+                    record_login_failure(client_ip)
                     self.send_json({"ok": False, "error": "用户名或密码不正确，请重新输入"}, HTTPStatus.FORBIDDEN)
             except Exception as exc:
                 self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -8087,7 +8185,7 @@ class Handler(BaseHTTPRequestHandler):
                 new_suffix = str(payload.get("secret_path") or "").strip()
                 
                 ui_cfg = load_ui_config()
-                if not new_username or (not new_password and not ui_cfg.get("password")):
+                if not new_username or (not new_password and not ui_cfg.get("password_hash")):
                     self.send_json({"ok": False, "error": "用户名不能为空；首次设置时密码不能为空"}, HTTPStatus.BAD_REQUEST)
                     return
                 
@@ -8104,18 +8202,20 @@ class Handler(BaseHTTPRequestHandler):
                     return
 
                 expected_username = ui_cfg.get("username", "")
-                expected_password = ui_cfg.get("password", "")
+                expected_hash = ui_cfg.get("password_hash", "")
                 expected_port = ui_cfg.get("port", 8787)
-                expected_suffix = ui_cfg.get("secret_path", "EJsW2EeBo9lY")
+                expected_suffix = ui_cfg.get("secret_path", "")
 
+                password_changed = bool(new_password) and not verify_ui_password(expected_hash, new_password)
                 ui_cfg["username"] = new_username
                 if new_password:
-                    ui_cfg["password"] = new_password
+                    ui_cfg["password_hash"] = hash_ui_password(new_password)
+                ui_cfg.pop("password", None)
                 ui_cfg["port"] = new_port_int
                 ui_cfg["secret_path"] = new_suffix
                 
                 auth_file = DATA_DIR / "ui_auth.json"
-                reauth_required = new_username != expected_username or (new_password and new_password != expected_password)
+                reauth_required = new_username != expected_username or password_changed
                 with lock:
                     DATA_DIR.mkdir(exist_ok=True, parents=True)
                     auth_file.write_text(json.dumps(ui_cfg, ensure_ascii=False, indent=2), encoding="utf-8")
